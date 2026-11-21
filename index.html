@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>שמיים אדומים</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/favicon-64.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#12141b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="שמיים אדומים">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&family=Rubik:wght@500;700&display=swap">
+<style>
+/* Layout: full-screen map; one time bar on top; two side buttons (layers, point) that open small panels */
+:root{
+  --bg:#eef0f3; --panel:rgba(255,255,255,.9); --panel-solid:#fff; --fg:#1d2230; --muted:#6a7183;
+  --line:rgba(29,34,48,.10); --accent:#e0503a; --sel:#1d2230; --sel-fg:#fff;
+  --good:#d9442f; --mid:#f08a3c; --low:#9aa1b1; --view:#138f9e;
+  --shadow:0 6px 24px rgba(20,24,40,.16);
+  --f-body:"Heebo",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  --f-display:"Rubik","Heebo",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#12141b; --panel:rgba(26,29,39,.9); --panel-solid:#1a1d27; --fg:#eceef4; --muted:#9097a8;
+  --line:rgba(255,255,255,.10); --accent:#ff6a4f; --sel:#eceef4; --sel-fg:#12141b;
+  --good:#ff5a40; --mid:#ff9a52; --low:#6d7385; --view:#3cc3d2; --shadow:0 6px 24px rgba(0,0,0,.45); color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#12141b; --panel:rgba(26,29,39,.9); --panel-solid:#1a1d27; --fg:#eceef4; --muted:#9097a8;
+  --line:rgba(255,255,255,.10); --accent:#ff6a4f; --sel:#eceef4; --sel-fg:#12141b;
+  --good:#ff5a40; --mid:#ff9a52; --low:#6d7385; --view:#3cc3d2; --shadow:0 6px 24px rgba(0,0,0,.45); color-scheme:dark }
+
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--f-body);-webkit-font-smoothing:antialiased;overflow:hidden}
+#map{position:fixed;inset:0;background:var(--bg)}
+.leaflet-container{font-family:var(--f-body);background:var(--bg)}
+.glass{background:var(--panel);backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);
+  border:1px solid var(--line);box-shadow:var(--shadow)}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* top: when */
+.top{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:0;right:0;z-index:1000;display:flex;flex-direction:column;align-items:center;gap:6px;
+  padding-left:max(64px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));pointer-events:none}
+.when{pointer-events:auto;display:flex;align-items:center;gap:4px;padding:4px;border-radius:999px;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.when::-webkit-scrollbar{display:none}
+.seg{display:flex;gap:2px}
+.seg button{padding:7px 13px;border-radius:999px;white-space:nowrap;font-weight:500;font-size:14px;color:var(--muted);transition:background .15s,color .15s}
+.seg button[aria-pressed="true"]{background:var(--sel);color:var(--sel-fg)}
+.sep{width:1px;height:20px;background:var(--line);margin:0 4px;flex:none}
+.status{pointer-events:auto;font-size:13px;color:var(--muted);padding:3px 12px;border-radius:999px;display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums}
+.status b{color:var(--fg);font-weight:500}
+.spin{width:11px;height:11px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--accent);animation:sp .8s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* side buttons */
+.side{position:fixed;left:max(12px,env(safe-area-inset-left,0px));top:calc(env(safe-area-inset-top,0px) + 12px);z-index:1100;display:flex;flex-direction:column;gap:8px}
+.side button{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;color:var(--fg);position:relative}
+.side button[aria-expanded="true"]{background:var(--sel);color:var(--sel-fg)}
+.side svg{width:21px;height:21px}
+.badge{position:absolute;top:-6px;right:-8px;min-width:20px;padding:1px 5px;border-radius:999px;font:700 11px/16px var(--f-display);color:#fff;background:var(--accent);box-shadow:0 1px 4px rgba(0,0,0,.25);font-variant-numeric:tabular-nums}
+
+/* panels */
+.panel{position:fixed;left:calc(max(12px,env(safe-area-inset-left,0px)) + 52px);top:calc(env(safe-area-inset-top,0px) + 12px);z-index:1100;
+  width:min(290px,calc(100vw - 84px));border-radius:18px;padding:14px;box-sizing:border-box;max-height:calc(100% - 40px);overflow:auto}
+.panel h3{margin:0 0 8px;font:500 12px/1 var(--f-body);letter-spacing:.06em;color:var(--muted)}
+.panel h3:not(:first-child){margin-top:14px}
+.maps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.maps button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
+.maps .th{width:100%;aspect-ratio:1;border-radius:10px;background-size:cover;background-position:center;border:2px solid transparent;box-sizing:border-box}
+.maps button[aria-pressed="true"]{color:var(--fg);font-weight:500}
+.maps button[aria-pressed="true"] .th{border-color:var(--accent)}
+.tog{display:flex;align-items:center;gap:10px;width:100%;padding:8px 2px;font-size:14.5px;text-align:start}
+.tog .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none}
+.tog .ic svg{width:17px;height:17px}
+.tog .nm{flex:1}
+.sw{width:34px;height:20px;border-radius:10px;background:var(--line);position:relative;flex:none;transition:background .15s}
+.sw::after{content:"";position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:right .15s}
+.tog[aria-checked="true"] .sw{background:var(--accent)}
+.tog[aria-checked="true"] .sw::after{right:16px}
+.links{display:flex;justify-content:space-between;gap:12px;margin-top:10px}
+.help{font-size:13px;color:var(--muted);text-decoration:underline;text-underline-offset:3px;padding:0}
+
+.pt-head{display:flex;align-items:baseline;gap:8px}
+.score{font:700 30px/1 var(--f-display);font-variant-numeric:tabular-nums}
+.verdict{font:500 15px/1.2 var(--f-display)}
+.pt-sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+.kv{display:grid;grid-template-columns:1fr auto;gap:6px 10px;margin-top:12px;font-size:14px}
+.kv .v{font-weight:500;font-variant-numeric:tabular-nums}
+.rose{display:block;margin:6px auto 0;width:170px;height:170px}
+.rose text{font:500 10.5px var(--f-body);fill:var(--muted)}
+.facing{font-size:13.5px;text-align:center;margin-top:2px}
+.empty{font-size:14px;color:var(--muted)}
+
+/* legend */
+.legend{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 22px);z-index:1000;display:flex;align-items:center;gap:8px;padding:5px 11px;border-radius:999px;font-size:12px;color:var(--muted)}
+.ramp{width:90px;height:7px;border-radius:4px}
+
+/* info sheet */
+.sheet{position:fixed;inset:0;z-index:2000;display:grid;place-items:center;background:rgba(10,12,20,.35);padding:16px}
+.sheet .box{max-width:440px;border-radius:20px;padding:22px 22px 18px;background:var(--panel-solid);box-shadow:var(--shadow)}
+.sheet h2{font:700 20px/1.2 var(--f-display);margin:0 0 10px;text-wrap:balance}
+.sheet p{margin:0 0 10px}
+.sheet .small{font-size:12.5px;color:var(--muted)}
+.sheet .ok{margin-top:6px;padding:9px 18px;border-radius:999px;background:var(--sel);color:var(--sel-fg);font-weight:500}
+
+.toast{position:fixed;top:calc(env(safe-area-inset-top,0px) + 100px);left:50%;transform:translateX(-50%);z-index:1500;padding:8px 14px;border-radius:12px;font-size:14px;max-width:calc(100% - 32px)}
+.toast button{color:var(--accent);font-weight:700;margin-inline-start:8px}
+
+.leaflet-control-attribution{font-size:10px;background:var(--panel)!important;color:var(--muted)}
+.leaflet-control-attribution a{color:var(--muted)}
+.pin{width:18px;height:18px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);box-sizing:border-box}
+.sunmark{width:26px;height:26px;border-radius:50%;background:radial-gradient(circle,#ffd27a 0 40%,rgba(255,170,80,0) 72%);display:grid;place-items:center}
+.sunmark::after{content:"";width:10px;height:10px;border-radius:50%;background:#ffb547;box-shadow:0 0 0 2px #fff}
+@media (max-width:480px){ .seg button{padding:7px 10px} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div id="map" aria-label="מפה"></div>
+
+<div class="top">
+  <div class="when glass" role="toolbar" aria-label="מתי">
+    <div class="seg" id="modeSeg">
+      <button id="m-sunset" data-mode="sunset" aria-pressed="true">שקיעה</button>
+      <button id="m-sunrise" data-mode="sunrise" aria-pressed="false">זריחה</button>
+    </div>
+    <span class="sep"></span>
+    <div class="seg" id="daySeg"></div>
+  </div>
+  <div class="status glass" id="status"><span class="spin"></span>טוען תחזית…</div>
+</div>
+
+<div class="side">
+  <button class="glass" id="layersBtn" aria-expanded="false" aria-controls="layersPanel" title="שכבות" aria-label="שכבות">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 12.5l9 5 9-5"/><path d="M3 17l9 5 9-5" opacity=".55"/></svg>
+  </button>
+  <button class="glass" id="pointBtn" aria-expanded="false" aria-controls="pointPanel" title="נתוני הנקודה" aria-label="נתוני הנקודה">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>
+    <span class="badge" id="badge" hidden></span>
+  </button>
+  <button class="glass" id="locate" title="המיקום שלי" aria-label="המיקום שלי">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+  </button>
+</div>
+
+<div class="panel glass" id="layersPanel" hidden>
+  <h3>סוג מפה</h3>
+  <div class="maps" id="maps"></div>
+  <h3>שכבות מידע</h3>
+  <div id="toggles"></div>
+  <div class="links">
+    <button class="help" id="infoBtn">איך זה עובד?</button>
+    <button class="help" id="installBtn" hidden>התקנה בטלפון</button>
+  </div>
+</div>
+
+<div class="panel glass" id="pointPanel" hidden></div>
+
+<div class="legend glass" id="legend"></div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="box">
+    <h2>איך מזהים שמיים אדומים</h2>
+    <p>עננים נצבעים באדום אחרי השקיעה (או לפני הזריחה), כשהשמש כבר מתחת לאופק אבל הקרניים שלה עדיין מגיעות אל העננים מלמטה.</p>
+    <p>לכל נקודה במפה נבדקים שני דברים: האם יש מעליה עננים בינוניים או גבוהים (מ-3 ק״מ ומעלה, כולל ענני נוצה בגובה 8 ק״מ) שיכולים להיצבע, והאם הדרך של קרני השמש אליהם, לאורך מאות קילומטרים לכיוון השמש, פנויה מעננים שיחסמו את האור. כשבוחרים נקודה, התחזית לאורך כיוון השמש שלה נשלפת בצפיפות גבוהה יותר, כדי לדייק את הסיכוי. עננים נמוכים מעל הנקודה מורידים את הסיכוי, כי הם מסתירים את השמיים.</p>
+    <p>הקישו על המפה כדי לבחור נקודה, ופתחו את כפתור הנקודה בצד כדי לראות את הנתונים שלה.</p>
+    <p class="small">תחזית עננים: Open-Meteo. גובה פני השטח: Terrain Tiles (AWS). זו הערכה מבוססת תחזית, לא הבטחה.</p>
+    <button class="ok" id="sheetOk">הבנתי</button>
+  </div>
+</div>
+<div class="sheet" id="installSheet" hidden>
+  <div class="box">
+    <h2>התקנה בטלפון</h2>
+    <p id="installText"></p>
+    <button class="ok" id="installOk">סגירה</button>
+  </div>
+</div>
+<div class="toast glass" id="toast" hidden></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
+<script>
+"use strict";
+const D2R = Math.PI/180, R_EARTH = 6371, R_EFF = R_EARTH*1.15; // refraction ~ k=0.13
+const MAX_POINTS = 200, PATH_KM = 600, PATH_STEP = 25, VIEW_R = 35;
+
+const store = { get(k,d){ try{ const v=localStorage.getItem('redsky.'+k); return v==null?d:JSON.parse(v); }catch(e){ return d; } },
+                set(k,v){ try{ localStorage.setItem('redsky.'+k, JSON.stringify(v)); }catch(e){} } };
+const state = { mode:'sunset', day:0, point:null, F:null, view:null, reqId:0,
+  basemap: store.get('basemap','clean'), show: Object.assign({red:true, clouds:false, view:true}, store.get('show',{})) };
+const $ = id => document.getElementById(id);
+const isDark = () => matchMedia('(prefers-color-scheme: dark)').matches;
+
+/* ---------- map & basemaps ---------- */
+const map = L.map('map', {zoomControl:false, minZoom:5, maxZoom:17}).setView([31.6, 34.95], 8);
+map.attributionControl.setPrefix(false);
+map.createPane('labels'); map.getPane('labels').style.zIndex=450; map.getPane('labels').style.pointerEvents='none';
+const esri = s => `https://server.arcgisonline.com/ArcGIS/rest/services/${s}/MapServer/tile/{z}/{y}/{x}`;
+const BASEMAPS = {
+  clean: { name:'נקייה', thumb:()=>esri(isDark()?'Canvas/World_Dark_Gray_Base':'Canvas/World_Light_Gray_Base').replace('{z}/{y}/{x}','7/52/76'),
+    layers:()=>[ L.tileLayer(esri(isDark()?'Canvas/World_Dark_Gray_Base':'Canvas/World_Light_Gray_Base'),{maxZoom:17,maxNativeZoom:16,attribution:'Esri, HERE, Garmin, © OpenStreetMap'}),
+                 L.tileLayer(esri(isDark()?'Canvas/World_Dark_Gray_Reference':'Canvas/World_Light_Gray_Reference'),{maxZoom:17,maxNativeZoom:16,pane:'labels'}) ] },
+  topo: { name:'טופוגרפית', thumb:()=>'https://a.tile.opentopomap.org/9/306/208.png',
+    layers:()=>[ L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{subdomains:'abc',maxZoom:17,attribution:'© OpenStreetMap, SRTM · © OpenTopoMap (CC-BY-SA)'}) ] },
+  satellite: { name:'לוויין', thumb:()=>esri('World_Imagery').replace('{z}/{y}/{x}','9/208/306'),
+    layers:()=>[ L.tileLayer(esri('World_Imagery'),{maxZoom:17,attribution:'Esri, Maxar, Earthstar Geographics'}),
+                 L.tileLayer(esri('Reference/World_Boundaries_and_Places'),{maxZoom:17,pane:'labels'}) ] },
+  streets: { name:'רחובות', thumb:()=>'https://tile.openstreetmap.org/12/2450/1665.png',
+    layers:()=>[ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:17,attribution:'© OpenStreetMap'}) ] },
+};
+let baseLayers = [];
+function setBase(){
+  if(!BASEMAPS[state.basemap]) state.basemap='clean';
+  baseLayers.forEach(l=>map.removeLayer(l));
+  baseLayers = BASEMAPS[state.basemap].layers(); baseLayers.forEach(l=>l.addTo(map)); baseLayers[0].bringToBack();
+}
+function buildMaps(){
+  const el=$('maps'); el.innerHTML='';
+  for(const [k,b] of Object.entries(BASEMAPS)){
+    const btn=document.createElement('button'); btn.id='map-'+k; btn.dataset.k=k; btn.setAttribute('aria-pressed',String(k===state.basemap));
+    btn.innerHTML=`<span class="th" style="background-image:url('${b.thumb()}')"></span>${b.name}`; el.appendChild(btn);
+  }
+}
+$('maps').addEventListener('click', e=>{ const b=e.target.closest('button'); if(!b) return;
+  state.basemap=b.dataset.k; store.set('basemap',state.basemap);
+  [...$('maps').children].forEach(x=>x.setAttribute('aria-pressed',String(x===b))); setBase(); render(); });
+setBase(); buildMaps();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', ()=>{ setBase(); buildMaps(); render(); });
+
+/* ---------- info layers toggles ---------- */
+const TOGGLES = [
+  {k:'red', name:'שמיים אדומים', color:'#e8553f', icon:'<path d="M3 17h18M6 21h12"/><path d="M7.5 17a4.5 4.5 0 0 1 9 0"/><path d="M12 6v2.5M5.6 9.6l1.6 1.6M18.4 9.6l-1.6 1.6"/>'},
+  {k:'clouds', name:'עננים', color:'#7d8aa3', icon:'<path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18z"/>'},
+  {k:'view', name:'שדה ראייה', color:'#138f9e', icon:'<path d="M2 19l6-9 4 5 3-3 7 7z"/><circle cx="17" cy="6" r="2"/>'},
+];
+function buildToggles(){
+  $('toggles').innerHTML = TOGGLES.map(t=>`<button class="tog" role="switch" id="tog-${t.k}" data-k="${t.k}" aria-checked="${state.show[t.k]}">
+    <span class="ic" style="background:${t.color}22;color:${t.color}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${t.icon}</svg></span>
+    <span class="nm">${t.name}</span><span class="sw"></span></button>`).join('');
+}
+buildToggles();
+$('toggles').addEventListener('click', e=>{ const b=e.target.closest('.tog'); if(!b) return;
+  const k=b.dataset.k; state.show[k]=!state.show[k]; b.setAttribute('aria-checked',String(state.show[k])); store.set('show',state.show);
+  if(k==='view'){ renderView(); if(state.show.view && !state.point) toast('הקישו על המפה כדי לבחור נקודת תצפית'); } else render();
+  legend();
+});
+
+/* ---------- panels ---------- */
+function openPanel(which){
+  const pairs=[['layers',$('layersBtn'),$('layersPanel')],['point',$('pointBtn'),$('pointPanel')]];
+  for(const [n,btn,pan] of pairs){ const on = n===which && pan.hidden; pan.hidden=!on; btn.setAttribute('aria-expanded',String(on)); }
+  if(which==='point' && !$('pointPanel').hidden) updatePoint();
+}
+$('layersBtn').onclick=()=>openPanel('layers');
+$('pointBtn').onclick=()=>openPanel('point');
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ $('layersPanel').hidden=$('pointPanel').hidden=true; $('sheet').hidden=true;
+  $('layersBtn').setAttribute('aria-expanded','false'); $('pointBtn').setAttribute('aria-expanded','false'); }});
+$('infoBtn').onclick = ()=>{ $('sheet').hidden=false; };
+$('sheetOk').onclick = ()=>{ $('sheet').hidden=true; };
+$('sheet').onclick = e=>{ if(e.target.id==='sheet') $('sheet').hidden=true; };
+
+/* ---------- time & sun ---------- */
+function eventFor(lat, lon){
+  const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()+state.day);
+  const t = SunCalc.getTimes(d, lat, lon)[state.mode];
+  if(!t || isNaN(t)) return null;
+  const p = SunCalc.getPosition(t, lat, lon);
+  return { time:t, az:((p.azimuth/D2R)+180+360)%360 };
+}
+const fmtTime = t => t.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});
+const DIRS = ['צפון','צפון-מזרח','מזרח','דרום-מזרח','דרום','דרום-מערב','מערב','צפון-מערב'];
+const compass = az => DIRS[Math.round(az/45)%8];
+
+/* ---------- top controls ---------- */
+(function buildDays(){
+  const seg=$('daySeg');
+  for(let i=0;i<4;i++){
+    const d=new Date(); d.setDate(d.getDate()+i);
+    const b=document.createElement('button'); b.id='d-'+i; b.dataset.day=i;
+    b.textContent = i===0?'היום':i===1?'מחר':d.toLocaleDateString('he-IL',{weekday:'short'});
+    b.setAttribute('aria-pressed', String(i===state.day)); seg.appendChild(b);
+  }
+})();
+$('daySeg').addEventListener('click', e=>{ const b=e.target.closest('button'); if(!b) return;
+  state.day=+b.dataset.day; [...$('daySeg').children].forEach(x=>x.setAttribute('aria-pressed', String(x===b))); if(state.point){ computeView(); refinePoint(); } load(); });
+$('modeSeg').addEventListener('click', e=>{ const b=e.target.closest('button'); if(!b) return;
+  state.mode=b.dataset.mode; [...$('modeSeg').children].forEach(x=>x.setAttribute('aria-pressed', String(x===b))); if(state.point){ computeView(); refinePoint(); } load(); });
+$('locate').onclick = ()=>{
+  if(!navigator.geolocation) return toast('הדפדפן לא מאפשר איתור מיקום');
+  navigator.geolocation.getCurrentPosition(p=>{ const ll=L.latLng(p.coords.latitude,p.coords.longitude); map.setView(ll, Math.max(map.getZoom(),10)); selectPoint(ll); },
+    ()=>toast('לא הצלחנו לאתר את המיקום'), {timeout:8000});
+};
+let toastTimer;
+function toast(msg, retry){
+  const t=$('toast'); t.innerHTML=''; t.append(msg);
+  if(retry){ const b=document.createElement('button'); b.textContent='נסו שוב'; b.onclick=()=>{t.hidden=true; retry();}; t.append(b); }
+  t.hidden=false; clearTimeout(toastTimer); if(!retry) toastTimer=setTimeout(()=>t.hidden=true, 3500);
+}
+function setStatus(html, loading){ $('status').innerHTML=(loading?'<span class="spin"></span>':'')+html; }
+
+/* ---------- legend & colors ---------- */
+const RED_STOPS = [[0,[255,175,90,0]],[0.12,[255,175,90,40]],[0.35,[255,128,60,135]],[0.6,[236,60,50,185]],[0.85,[190,25,75,210]],[1,[140,20,95,225]]];
+function cloudStops(){ const white = state.basemap==='satellite' || (state.basemap==='clean' && isDark());
+  return white ? [[0,[235,240,250,0]],[0.15,[235,240,250,30]],[1,[245,248,255,210]]]
+               : [[0,[60,72,96,0]],[0.15,[60,72,96,25]],[1,[52,62,86,190]]]; }
+function stopsCss(stops){ return 'linear-gradient(to left,'+stops.map(([p,c])=>`rgba(${c[0]},${c[1]},${c[2]},${Math.max(c[3],30)/255}) ${p*100}%`).join(',')+')'; }
+function legend(){
+  const el=$('legend'); el.hidden = !state.show.red;
+  el.innerHTML=`<span>חלש</span><span class="ramp" style="background:${stopsCss(RED_STOPS)}"></span><span>מרהיב</span>`;
+}
+function ramp(stops, v){
+  if(v<=stops[0][0]) return stops[0][1];
+  for(let i=1;i<stops.length;i++){ if(v<=stops[i][0]){ const [p0,c0]=stops[i-1],[p1,c1]=stops[i], f=(v-p0)/(p1-p0);
+    return c0.map((x,j)=>x+(c1[j]-x)*f); } }
+  return stops[stops.length-1][1];
+}
+
+/* ---------- cloud forecast (Open-Meteo) ---------- */
+// One request per grid point brings 5 days of hourly data, so switching day or sunset/sunrise costs nothing.
+const cache = new Map(); // `${lat},${lon}` -> {t0, low[], mid[], high[]}
+function offset(lat, lon, az, km){
+  return [lat + km*Math.cos(az*D2R)/111.32, lon + km*Math.sin(az*D2R)/(111.32*Math.cos(lat*D2R))];
+}
+async function fetchChunk(pts){
+  const url = 'https://api.open-meteo.com/v1/forecast?latitude='+pts.map(p=>p[0].toFixed(3)).join(',')
+    +'&longitude='+pts.map(p=>p[1].toFixed(3)).join(',')
+    +'&hourly=cloud_cover_low,cloud_cover_mid,cloud_cover_high&timezone=GMT&timeformat=unixtime&past_days=1&forecast_days=5';
+  const r = await fetch(url);
+  if(r.status===429) throw Object.assign(new Error('rate'),{rate:true});
+  if(!r.ok) throw new Error('forecast '+r.status);
+  let j = await r.json(); if(!Array.isArray(j)) j=[j];
+  const f = a => Float32Array.from(a, v => v==null?0:v/100);
+  j.forEach((loc,i)=>{ const H=loc.hourly;
+    cache.set(pts[i][2], {t0:H.time[0]/3600, low:f(H.cloud_cover_low), mid:f(H.cloud_cover_mid), high:f(H.cloud_cover_high)}); });
+}
+function at(rec, layer, hourF){
+  const a=rec[layer], x=Math.max(0,Math.min(a.length-1.001, hourF-rec.t0)), i=Math.floor(x);
+  return a[i]+(a[i+1]-a[i])*(x-i);
+}
+async function load(){
+  const id = ++state.reqId;
+  const c = map.getCenter(), ev = eventFor(c.lat, c.lng);
+  if(!ev){ setStatus('אין שקיעה או זריחה ביום הזה כאן'); return; }
+  const label = state.mode==='sunset'?'שקיעה':'זריחה';
+  setStatus(`${label} <b>${fmtTime(ev.time)}</b> · טוען תחזית…`, true);
+
+  // area = viewport ∪ viewport shifted toward the sun (that's where the light comes from)
+  const b = map.getBounds().pad(0.08);
+  const corners = [[b.getSouth(),b.getWest()],[b.getSouth(),b.getEast()],[b.getNorth(),b.getWest()],[b.getNorth(),b.getEast()]];
+  const all = corners.concat(corners.map(([la,lo])=>offset(la,lo,ev.az,PATH_KM*0.85)));
+  let s=Math.min(...all.map(p=>p[0])), n=Math.max(...all.map(p=>p[0])), w=Math.min(...all.map(p=>p[1])), e=Math.max(...all.map(p=>p[1]));
+  s=Math.max(s,-85); n=Math.min(n,85);
+  const steps=[0.25,0.35,0.5,0.75,1,1.5,2];
+  const step=steps.find(st=>((Math.floor(n/st)-Math.floor(s/st)+2)*(Math.floor(e/st)-Math.floor(w/st)+2))<=MAX_POINTS) || 3;
+  const lat0=Math.floor(s/step)*step, lon0=Math.floor(w/step)*step;
+  const nLat=Math.floor(n/step)-Math.floor(s/step)+2, nLon=Math.floor(e/step)-Math.floor(w/step)+2;
+  const hourF=ev.time.getTime()/3600000;
+
+  const pts=[], missing=[];
+  for(let i=0;i<nLat;i++) for(let k=0;k<nLon;k++){
+    const la=+(lat0+i*step).toFixed(3), lo=+(lon0+k*step).toFixed(3), key=la+','+lo;
+    pts.push(key); if(!cache.has(key)) missing.push([la,lo,key]);
+  }
+  try{
+    for(let i=0;i<missing.length;i+=100){ await fetchChunk(missing.slice(i,i+100)); if(id!==state.reqId) return; }
+  }catch(err){
+    console.error('forecast load failed', err);
+    if(id!==state.reqId) return;
+    setStatus(`${label} <b>${fmtTime(ev.time)}</b>`);
+    if(err.rate){ toast('שירות התחזית מגביל בקשות לדקה. מנסה שוב בעוד דקה…'); setTimeout(()=>{ if(id===state.reqId) load(); }, 61000); }
+    else toast('לא הצלחנו לטעון את תחזית העננים.', load);
+    return;
+  }
+  if(id!==state.reqId) return;
+  const N=nLat*nLon, low=new Float32Array(N), mid=new Float32Array(N), high=new Float32Array(N);
+  pts.forEach((key,i)=>{ const r=cache.get(key); if(!r) return;
+    low[i]=at(r,'low',hourF); mid[i]=at(r,'mid',hourF); high[i]=at(r,'high',hourF); });
+  state.F={lat0,lon0,step,nLat,nLon,low,mid,high,az:ev.az,time:ev.time};
+  setStatus(`${label} <b>${fmtTime(ev.time)}</b> · השמש ${state.mode==='sunset'?'שוקעת':'זורחת'} ב${compass(ev.az)}`);
+  render(); updatePoint();
+}
+
+/* ---------- sampling & red-sky model ---------- */
+function sample(arr, lat, lon){
+  const F=state.F; let y=(lat-F.lat0)/F.step, x=(lon-F.lon0)/F.step;
+  y=Math.max(0,Math.min(F.nLat-1.001,y)); x=Math.max(0,Math.min(F.nLon-1.001,x));
+  const i=Math.floor(y), k=Math.floor(x), fy=y-i, fx=x-k, W=F.nLon;
+  const a=arr[i*W+k], b=arr[i*W+k+1], c=arr[(i+1)*W+k], d=arr[(i+1)*W+k+1];
+  return (a*(1-fx)+b*fx)*(1-fy)+(c*(1-fx)+d*fx)*fy;
+}
+// Open-Meteo layers: low = 0–3 km, mid = 3–8 km, high = above 8 km.
+// Clouds that get painted: the mid layer (geometry checked at 3 and 5 km) and the high layer (at 8 km).
+// Sunlight reaching a cloud at height h (km) during the glow: the lighting ray leaves the cloud heading
+// down toward the sun, grazes the earth at distance δ·R and climbs again. We trace it and attenuate by the
+// clouds at the height the ray passes through. cloudAt(layer, x) gives cover x km from the point toward the sun.
+const MID_H = [3, 5], HIGH_H = 8, TOP_KM = 12;
+function pathLight(h, cloudAt){
+  const dmax=Math.sqrt(2*h/R_EFF), K=4; let best=0, sum=0;
+  for(let k=1;k<=K;k++){
+    const del=dmax*k/(K+1); let T=1;
+    for(let x=PATH_STEP; x<=PATH_KM; x+=PATH_STEP){
+      const z=h - x*del + x*x/(2*R_EFF);
+      if(z>TOP_KM) break; // ray is above all clouds
+      let c, w=1;
+      if(z<3) c=cloudAt('low',x);
+      else if(z<8){ c=cloudAt('mid',x); if(h<8 && z<h-0.5) w=0.35; } // same layer but below the lit cloud: partial
+      else { c=cloudAt('high',x)*0.6; if(z<h-0.5) w=0.35; }           // high clouds are thin
+      T*=Math.pow(1-0.92*c*w, PATH_STEP/50);
+      if(T<0.01) break;
+    }
+    best=Math.max(best,T); sum+=T;
+  }
+  return 0.7*best+0.3*sum/K;
+}
+function deck(c){ if(c<=0.03) return 0; let v=Math.min(1,c/0.4); if(c>0.8) v*=1-(c-0.8)/0.2*0.45; return v; }
+function scoreFrom(low, mid, high, cloudAt){
+  const sMid  = mid>0.03  ? deck(mid)*Math.max(...MID_H.map(h=>pathLight(h,cloudAt))) : 0;
+  const sHigh = high>0.03 ? deck(high)*pathLight(HIGH_H,cloudAt)*0.9 : 0;
+  return {s:(1-(1-sMid)*(1-sHigh))*(1-0.75*low), low, mid, high};
+}
+function redScore(lat, lon){
+  const F=state.F, dLat=Math.cos(F.az*D2R)/111.32, dLon=Math.sin(F.az*D2R)/(111.32*Math.cos(lat*D2R));
+  return scoreFrom(sample(F.low,lat,lon), sample(F.mid,lat,lon), sample(F.high,lat,lon), (layer,x)=>sample(F[layer], lat+x*dLat, lon+x*dLon));
+}
+
+/* ---------- point refinement: dense forecast only along the sun direction of the chosen point ---------- */
+const FINE = 0.05, LINE_STEP = 15;
+const snap = v => +(Math.round(v/FINE)*FINE).toFixed(3);
+const tagNow = () => state.mode+'|'+state.day;
+async function refinePoint(){
+  const p=state.point; if(!p) return; const ev=eventFor(p.lat,p.lng); if(!ev) return;
+  const tag=tagNow(), K=(a,b)=>a+','+b;
+  const line=[]; for(let x=0;x<=PATH_KM;x+=LINE_STEP){ const [la,lo]=offset(p.lat,p.lng,ev.az,x); line.push(K(snap(la),snap(lo))); }
+  const la0=+(Math.floor(p.lat/FINE)*FINE).toFixed(3), lo0=+(Math.floor(p.lng/FINE)*FINE).toFixed(3), la1=+(la0+FINE).toFixed(3), lo1=+(lo0+FINE).toFixed(3);
+  const box=[K(la0,lo0),K(la0,lo1),K(la1,lo0),K(la1,lo1)];
+  const keys=[...new Set([...line,...box])], missing=keys.filter(k=>!cache.has(k)).map(k=>{ const [a,b]=k.split(',').map(Number); return [a,b,k]; });
+  state.fine={p, tag, loading:true}; updatePoint();
+  try{ for(let i=0;i<missing.length;i+=100){ await fetchChunk(missing.slice(i,i+100)); if(state.point!==p || tag!==tagNow()) return; } }
+  catch(err){ if(state.point===p && tag===tagNow()){ state.fine={p, tag, error:true}; updatePoint(); } return; }
+  if(state.point!==p || tag!==tagNow()) return;
+  const hF=ev.time.getTime()/3600000, v=(k,l)=>at(cache.get(k),l,hF);
+  const fy=(p.lat-la0)/FINE, fx=(p.lng-lo0)/FINE;
+  const bil=l=>(v(box[0],l)*(1-fx)+v(box[1],l)*fx)*(1-fy)+(v(box[2],l)*(1-fx)+v(box[3],l)*fx)*fy;
+  state.fine={p, tag, n:keys.length, low:bil('low'), mid:bil('mid'), high:bil('high'),
+    line:{low:line.map(k=>v(k,'low')), mid:line.map(k=>v(k,'mid')), high:line.map(k=>v(k,'high'))}};
+  updatePoint();
+}
+function fineScore(){
+  const f=state.fine; if(!f || f.p!==state.point || f.tag!==tagNow() || f.loading || f.error) return null;
+  const along=(arr,x)=>{ const i=x/LINE_STEP, k=Math.min(arr.length-2,Math.floor(i)), t=Math.min(1,i-k); return arr[k]+(arr[k+1]-arr[k])*t; };
+  return scoreFrom(f.low, f.mid, f.high, (layer,x)=>along(f.line[layer], x));
+}
+
+/* ---------- rendering ---------- */
+let cloudOverlay=null, redOverlay=null, viewOverlay=null, pinMarker=null, sunLine=null, sunMarker=null;
+function paint(fn, stops){
+  const size=map.getSize(), cols=Math.min(140,Math.max(60,Math.round(size.x/9))), rows=Math.max(20,Math.round(cols*size.y/size.x));
+  const cv=document.createElement('canvas'); cv.width=cols; cv.height=rows;
+  const ctx=cv.getContext('2d'), img=ctx.createImageData(cols,rows);
+  for(let r=0;r<rows;r++) for(let c=0;c<cols;c++){
+    const ll=map.containerPointToLatLng([(c+0.5)/cols*size.x,(r+0.5)/rows*size.y]);
+    const col=ramp(stops,fn(ll.lat,ll.lng)), o=(r*cols+c)*4;
+    img.data[o]=col[0]; img.data[o+1]=col[1]; img.data[o+2]=col[2]; img.data[o+3]=col[3];
+  }
+  ctx.putImageData(img,0,0);
+  return L.imageOverlay(cv.toDataURL(), map.getBounds(), {interactive:false}).addTo(map);
+}
+function render(){
+  [cloudOverlay,redOverlay].forEach(l=>l&&map.removeLayer(l)); cloudOverlay=redOverlay=null;
+  if(!state.F) return; const F=state.F;
+  if(state.show.clouds) cloudOverlay=paint((la,lo)=>{ const l=sample(F.low,la,lo), m=sample(F.mid,la,lo), h=sample(F.high,la,lo); return 1-(1-l)*(1-m)*(1-h); }, cloudStops());
+  if(state.show.red) redOverlay=paint((la,lo)=>redScore(la,lo).s, RED_STOPS);
+}
+
+/* ---------- selected point ---------- */
+function verdict(s){ return s>=0.7?['מרהיב','var(--good)']:s>=0.45?['טוב','var(--good)']:s>=0.2?['בינוני','var(--mid)']:['נמוך','var(--low)']; }
+function selectPoint(ll){
+  state.point=ll;
+  if(!pinMarker) pinMarker=L.marker(ll,{icon:L.divIcon({className:'',html:'<div class="pin"></div>',iconSize:[18,18],iconAnchor:[9,9]}),keyboard:false,interactive:false}).addTo(map);
+  else pinMarker.setLatLng(ll);
+  state.view=null; renderView(); updatePoint(); computeView(); refinePoint();
+}
+map.on('click', e=>{
+  if(!$('layersPanel').hidden){ openPanel('layers'); return; } // first tap just closes the layers panel
+  selectPoint(e.latlng);
+});
+function clearPoint(){
+  state.point=null; state.view=null;
+  [pinMarker,sunLine,sunMarker,viewOverlay].forEach(l=>l&&map.removeLayer(l)); pinMarker=sunLine=sunMarker=viewOverlay=null; updatePoint();
+}
+function drawSunLine(){
+  [sunLine,sunMarker].forEach(l=>l&&map.removeLayer(l)); sunLine=sunMarker=null;
+  if(!state.point) return; const ev=eventFor(state.point.lat,state.point.lng); if(!ev) return;
+  const end=offset(state.point.lat,state.point.lng,ev.az,60);
+  sunLine=L.polyline([state.point,end],{color:'#ff9a3c',weight:2.5,dashArray:'2 7',lineCap:'round',interactive:false}).addTo(map);
+  sunMarker=L.marker(end,{icon:L.divIcon({className:'',html:'<div class="sunmark"></div>',iconSize:[26,26],iconAnchor:[13,13]}),interactive:false,keyboard:false}).addTo(map);
+}
+function updatePoint(){
+  const badge=$('badge'), pan=$('pointPanel'), p=state.point;
+  drawSunLine();
+  if(!p || !state.F){ badge.hidden=true; }
+  const fine = p ? fineScore() : null;
+  const r = fine || (p && state.F ? redScore(p.lat,p.lng) : null);
+  if(r){ badge.hidden=false; badge.textContent=Math.round(r.s*100)+'%'; badge.style.background=verdict(r.s)[1]; }
+  if(pan.hidden) return;
+  if(!p){ pan.innerHTML='<div class="empty">הקישו על המפה כדי לבחור נקודה.</div>'; return; }
+  const ev=eventFor(p.lat,p.lng), label=state.mode==='sunset'?'שקיעה':'זריחה';
+  let html='';
+  if(r){
+    const [vw,vc]=verdict(r.s);
+    html+=`<div class="pt-head"><span class="score" style="color:${vc}">${Math.round(r.s*100)}%</span><span class="verdict">סיכוי ${vw} לשמיים אדומים</span></div>
+      <div class="pt-sub">${ev?`${label} ב-${fmtTime(ev.time)}, לכיוון ${compass(ev.az)}`:''}</div>`;
+    const f=state.fine;
+    if(f && f.p===p){
+      const note = fine ? `מחושב לפי ${f.n} נקודות תחזית לאורך כיוון השמש`
+        : f.loading ? '<span class="spin"></span>מדייק לפי התחזית בכיוון השמש…'
+        : f.error ? 'לא הצלחנו לדייק. מוצגת הערכה לפי הרשת הכללית' : '';
+      if(note) html+=`<div class="pt-sub" style="display:flex;gap:6px;align-items:center">${note}</div>`;
+    }
+  } else html+='<div class="empty">טוען תחזית…</div>';
+  const v=state.view;
+  html+='<div class="kv">';
+  if(r) html+=`<span>עננים נמוכים שמסתירים את השמיים</span><span class="v">${Math.round(r.low*100)}%</span>`;
+  html+=`<span>גובה הנקודה</span><span class="v">${v&&!v.error?Math.round(v.elev)+' מ׳':'…'}</span></div>`;
+  if(!v) html+='<div class="empty" style="margin-top:12px;display:flex;gap:8px;align-items:center"><span class="spin"></span>מחשב שדה ראייה…</div>';
+  else if(v.error) html+='<div class="empty" style="margin-top:12px">לא הצלחנו לטעון נתוני גובה.</div>';
+  else html+=roseSvg(v, ev?ev.az:null)+facingText(v);
+  pan.innerHTML=html;
+}
+// Compass rose: one wedge per 22.5°, length = share of that direction you can see (up to VIEW_R km)
+function roseSvg(v, sunAz){
+  const C=85, r0=16, R=64, n=v.sectors.length;
+  let s=`<svg class="rose" viewBox="0 0 170 170" role="img" aria-label="כמה רואים לכל כיוון">`;
+  s+=`<circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="var(--line)"/><circle cx="${C}" cy="${C}" r="${(R+r0)/2}" fill="none" stroke="var(--line)" stroke-dasharray="2 3"/>`;
+  v.sectors.forEach((f,i)=>{
+    if(f<0.005) return;
+    const a0=(i-0.5)*360/n*D2R, a1=(i+0.5)*360/n*D2R, rr=r0+(R-r0)*Math.sqrt(Math.min(1,f)); // sqrt so small shares still show
+    const P=(a,r)=>`${(C+r*Math.sin(a)).toFixed(1)},${(C-r*Math.cos(a)).toFixed(1)}`;
+    s+=`<path d="M${P(a0,r0)} L${P(a0,rr)} A${rr},${rr} 0 0 1 ${P(a1,rr)} L${P(a1,r0)} A${r0},${r0} 0 0 0 ${P(a0,r0)}Z" fill="var(--view)" fill-opacity="${0.35+0.55*Math.min(1,f)}"/>`;
+  });
+  if(sunAz!=null){ const x=C+(R+9)*Math.sin(sunAz*D2R), y=C-(R+9)*Math.cos(sunAz*D2R);
+    s+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" fill="#ffb547" stroke="var(--panel-solid)" stroke-width="2"/>`; }
+  s+=`<text x="${C}" y="10" text-anchor="middle">צ</text><text x="${C}" y="167" text-anchor="middle">ד</text>
+      <text x="164" y="${C+4}" text-anchor="middle">מז</text><text x="7" y="${C+4}" text-anchor="middle">מע</text>
+      <circle cx="${C}" cy="${C}" r="3.5" fill="var(--accent)"/></svg>`;
+  return s;
+}
+function facingText(v){
+  const top = v.dirs.map((f,i)=>[f,i]).sort((a,b)=>b[0]-a[0]).filter(([f])=>f>=0.08).slice(0,3);
+  const list = top.length ? top.map(([f,i])=>`${DIRS[i]} ${Math.round(f*100)}%`).join(' · ') : 'השטח סביב חסום כמעט לכל הכיוונים';
+  const dir=state.mode==='sunset'?'השקיעה':'הזריחה';
+  const hz = v.horizonDeg<0.4 ? `האופק לכיוון ${dir} פתוח` : v.horizonDeg<2 ? `האופק לכיוון ${dir} מוגבה מעט (${v.horizonDeg.toFixed(1)}°)` : `רכס חוסם את ${dir} במרחק ${v.horizonKm.toFixed(1)} ק״מ`;
+  return `<div class="facing">${top.length?'צופה בעיקר ל':''}${list}</div><div class="pt-sub" style="text-align:center">${hz} · נראים ${v.pct}% מהשטח עד ${VIEW_R} ק״מ</div>`;
+}
+
+/* ---------- terrain & viewshed ---------- */
+const TZ=10, tiles=new Map();
+function tile(x,y){
+  const key=x+'/'+y; if(tiles.has(key)) return tiles.get(key);
+  const p=new Promise((res,rej)=>{
+    const img=new Image(); img.crossOrigin='anonymous';
+    img.onload=()=>{ const c=document.createElement('canvas'); c.width=c.height=256; const g=c.getContext('2d'); g.drawImage(img,0,0);
+      const d=g.getImageData(0,0,256,256).data, e=new Float32Array(65536);
+      for(let i=0;i<65536;i++) e[i]=d[i*4]*256+d[i*4+1]+d[i*4+2]/256-32768; res(e); };
+    img.onerror=()=>rej(new Error('tile'));
+    img.src=`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${TZ}/${x}/${y}.png`;
+  });
+  tiles.set(key,p); p.catch(()=>tiles.delete(key)); return p;
+}
+const worldPx=(lat,lon)=>{ const n=256*2**TZ, s=Math.sin(lat*D2R); return [(lon+180)/360*n, (0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n]; };
+async function computeView(){
+  const p=state.point; if(!p) return;
+  const dLat=VIEW_R/111.32, dLon=VIEW_R/(111.32*Math.cos(p.lat*D2R));
+  const [x0,y0]=worldPx(p.lat+dLat,p.lng-dLon), [x1,y1]=worldPx(p.lat-dLat,p.lng+dLon);
+  const need=[]; for(let ty=Math.floor(y0/256);ty<=Math.floor(y1/256);ty++) for(let tx=Math.floor(x0/256);tx<=Math.floor(x1/256);tx++) need.push([tx,ty]);
+  let data;
+  try{ data=await Promise.all(need.map(([x,y])=>tile(x,y).then(e=>[x+'/'+y,e]))); }
+  catch(e){ if(state.point===p){ state.view={error:true}; updatePoint(); } return; }
+  if(state.point!==p) return;
+  const T=new Map(data);
+  const elev=(lat,lon)=>{ const [px,py]=worldPx(lat,lon), tx=Math.floor(px/256), ty=Math.floor(py/256), e=T.get(tx+'/'+ty);
+    if(!e) return 0; const v=e[(Math.floor(py)-ty*256)*256+(Math.floor(px)-tx*256)]; return v<0?0:v; };
+  const N=420, cell=2*VIEW_R/N, out=new Uint8Array(N*N), h0=elev(p.lat,p.lng)/1000+0.002;
+  const kmLat=1/111.32, kmLon=1/(111.32*Math.cos(p.lat*D2R)), RAYS=2048, STEP=0.1, NS=16;
+  const secVis=new Float64Array(NS), secTot=new Float64Array(NS);
+  const ev=eventFor(p.lat,p.lng), sunAz=ev?ev.az:270;
+  const trace=(azDeg, mark)=>{
+    const sa=Math.sin(azDeg*D2R), ca=Math.cos(azDeg*D2R), sec=Math.round(azDeg/(360/NS))%NS; let maxA=-Infinity, maxD=0;
+    for(let d=STEP; d<=VIEW_R; d+=STEP){
+      const dx=d*sa, dy=d*ca, e=elev(p.lat+dy*kmLat, p.lng+dx*kmLon)/1000;
+      const a=(e - d*d/(2*R_EFF) - h0)/d;
+      if(mark){
+        // a spot counts as visible when something 10 m tall standing there can be seen (area-weighted by d)
+        const vis = a + 0.010/d >= maxA;
+        secTot[sec]+=d; if(vis){ secVis[sec]+=d; const ix=Math.floor((dx+VIEW_R)/cell), iy=Math.floor((VIEW_R-dy)/cell); if(ix>=0&&iy>=0&&ix<N&&iy<N) out[iy*N+ix]=1; }
+      }
+      if(a>maxA && d>0.3){ maxA=a; maxD=d; }
+    }
+    return [maxA,maxD];
+  };
+  for(let i=0;i<RAYS;i++) trace(i/RAYS*360, true);
+  const [hA,hD]=trace(sunAz,false);
+  const sectors=[...secVis].map((v,i)=>v/secTot[i]);
+  const dirs=[]; for(let i=0;i<8;i++){ const a=2*i; dirs.push((secVis[a]+secVis[(a+1)%NS]*0.5+secVis[(a+NS-1)%NS]*0.5)/(secTot[a]+secTot[(a+1)%NS]*0.5+secTot[(a+NS-1)%NS]*0.5)); }
+  let vis=0, tot=0; for(let iy=0;iy<N;iy++) for(let ix=0;ix<N;ix++){ const dx=(ix+0.5)*cell-VIEW_R, dy=VIEW_R-(iy+0.5)*cell; if(dx*dx+dy*dy<=VIEW_R*VIEW_R){ tot++; vis+=out[iy*N+ix]; } }
+  const cv=document.createElement('canvas'); cv.width=cv.height=N; const g=cv.getContext('2d'), img=g.createImageData(N,N);
+  const col=[19,170,186];
+  for(let i=0;i<N*N;i++) if(out[i]){ img.data[i*4]=col[0]; img.data[i*4+1]=col[1]; img.data[i*4+2]=col[2]; img.data[i*4+3]=135; }
+  g.putImageData(img,0,0);
+  state.view={ url:cv.toDataURL(), bounds:[[p.lat-dLat,p.lng-dLon],[p.lat+dLat,p.lng+dLon]], elev:h0*1000-2, pct:Math.round(vis/tot*100),
+    horizonDeg:Math.max(0,Math.atan(hA)/D2R), horizonKm:hD, sectors, dirs };
+  updatePoint(); renderView();
+}
+function renderView(){
+  if(viewOverlay){ map.removeLayer(viewOverlay); viewOverlay=null; }
+  if(!state.show.view || !state.view || !state.view.url) return;
+  viewOverlay=L.imageOverlay(state.view.url, state.view.bounds, {interactive:false}).addTo(map);
+}
+
+/* ---------- install as an app ---------- */
+const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+let installEvt = null;
+try{ if('serviceWorker' in navigator && window.isSecureContext && window.top===window) navigator.serviceWorker.register('sw.js').catch(()=>{}); }catch(e){}
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); installEvt=e; $('installBtn').hidden=false; });
+window.addEventListener('appinstalled', ()=>{ $('installBtn').hidden=true; installEvt=null; });
+if(!standalone && isIOS) $('installBtn').hidden=false;
+$('installBtn').onclick = async ()=>{
+  if(installEvt){ installEvt.prompt(); const r=await installEvt.userChoice; if(r.outcome==='accepted') $('installBtn').hidden=true; installEvt=null; return; }
+  $('installText').textContent = isIOS
+    ? 'פתחו את הדף ב-Safari, הקישו על כפתור השיתוף (ריבוע עם חץ למעלה) ובחרו "הוסף למסך הבית". האפליקציה תופיע עם אייקון ותיפתח במסך מלא.'
+    : 'בתפריט הדפדפן בחרו "התקנת אפליקציה" או "הוספה למסך הבית".';
+  $('installSheet').hidden=false;
+};
+$('installOk').onclick = ()=>{ $('installSheet').hidden=true; };
+$('installSheet').onclick = e=>{ if(e.target.id==='installSheet') $('installSheet').hidden=true; };
+
+/* ---------- go ---------- */
+let mvT; map.on('moveend', ()=>{ clearTimeout(mvT); mvT=setTimeout(load, 350); });
+map.on('zoomstart', ()=>{ [redOverlay,cloudOverlay].forEach(o=>o&&o.setOpacity(0.35)); });
+legend(); load();
+</script>
+</body>
+</html>
