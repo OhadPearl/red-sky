@@ -141,6 +141,17 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .sheet h2{font:700 20px/1.2 var(--f-display);margin:0 0 10px;text-wrap:balance}
 .sheet p{margin:0 0 10px}
 .sheet .small{font-size:12.5px;color:var(--muted)}
+.share{margin-inline-start:auto}
+.sheet .box.sharebox{width:100%;max-width:400px;position:relative;padding:14px 14px 16px;max-height:calc(100dvh - 32px);overflow:auto}
+#shareCv{display:block;width:100%;height:auto;max-height:58dvh;object-fit:contain;border-radius:14px;background:#1b1d2b}
+.shareplace{display:flex;align-items:center;gap:8px;margin:12px 2px 4px;font-size:13px;color:var(--muted)}
+.shareplace input{flex:1;min-width:0;font:inherit;font-size:15px;color:var(--fg);background:transparent;border:0;border-bottom:1px dashed var(--line);padding:5px 2px}
+.shareplace input:focus{outline:none;border-bottom-color:var(--accent)}
+.sharetext{font-size:12.5px;color:var(--muted);margin:2px 2px 10px;white-space:pre-line;overflow-wrap:anywhere}
+.sharebtns{display:flex;flex-wrap:wrap;gap:8px}
+.sharebtns button{padding:9px 14px;border-radius:999px;background:var(--line);font-weight:500;font-size:14px}
+.sharebtns button.ok{margin:0;background:var(--accent);color:#fff;flex:1}
+.sheet .x{position:absolute;top:20px;left:20px;width:32px;height:32px;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:20px;line-height:1}
 .sheet .ok{margin-top:6px;padding:9px 18px;border-radius:999px;background:var(--sel);color:var(--sel-fg);font-weight:500}
 
 .toast{position:fixed;top:calc(env(safe-area-inset-top,0px) + 56px);left:50%;transform:translateX(-50%);z-index:1500;padding:8px 14px;border-radius:12px;font-size:14px;max-width:calc(100% - 32px)}
@@ -191,6 +202,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   <div class="favrow" id="favRow" hidden>
     <button class="star" id="starBtn" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg><span>שמירה</span></button>
     <input id="favName" placeholder="שם המקום" aria-label="שם המקום" hidden maxlength="40">
+    <button class="star share" id="shareBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3.5M7.5 8 12 3.5 16.5 8"/><path d="M5 12v6.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V12"/></svg><span>שיתוף</span></button>
   </div>
   <div id="pointBody"></div>
 </div>
@@ -212,6 +224,15 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <h2>התקנה בטלפון</h2>
     <p id="installText"></p>
     <button class="ok" id="installOk">סגירה</button>
+  </div>
+</div>
+<div class="sheet" id="shareSheet" hidden>
+  <div class="box sharebox">
+    <canvas id="shareCv" width="1080" height="1350" aria-label="כרטיס התחזית לשיתוף"></canvas>
+    <button class="x" id="shareClose" aria-label="סגירה">×</button>
+    <label class="shareplace"><span>מאיפה</span><input id="sharePlace" maxlength="60" placeholder="שם המקום"></label>
+    <div class="sharetext" id="shareText"></div>
+    <div class="sharebtns"><button class="ok" id="shareGo">שיתוף</button><button id="shareCopy">העתקת טקסט</button><button id="shareSave">שמירת תמונה</button></div>
   </div>
 </div>
 <div class="toast glass" id="toast" hidden></div>
@@ -290,7 +311,7 @@ $('layersBtn').onclick=()=>openPanel('layers');
 $('pointBtn').onclick=()=>openPanel('point');
 $('favBtn').onclick=()=>openPanel('fav');
 const anyPanel = () => ['layers','point','fav'].find(n=>!$(n+'Panel').hidden);
-document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ const n=anyPanel(); if(n) openPanel(n); $('sheet').hidden=true; }});
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ const n=anyPanel(); if(n) openPanel(n); $('sheet').hidden=true; $('shareSheet').hidden=true; }});
 $('infoBtn').onclick = ()=>{ $('sheet').hidden=false; };
 $('sheetOk').onclick = ()=>{ $('sheet').hidden=true; };
 $('sheet').onclick = e=>{ if(e.target.id==='sheet') $('sheet').hidden=true; };
@@ -907,6 +928,128 @@ function renderView(){
   viewOverlay=L.imageOverlay(state.view.url, state.view.bounds, {interactive:false}).addTo(map);
 }
 
+/* ---------- share card: an image of the forecast plus a message with a navigation link ---------- */
+const navLink = p => `https://www.google.com/maps/dir/?api=1&destination=${p.lat.toFixed(5)},${p.lng.toFixed(5)}`;
+const appLink = p => `${location.origin}${location.pathname}?at=${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+// "רחוב יוחנן בצפת": the street and town from OpenStreetMap; a name the user gave a saved place wins.
+async function placeFor(p){
+  if(p._place) return p._place;
+  const ctl=new AbortController(), to=setTimeout(()=>ctl.abort(), 5000);
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=17&accept-language=he&lat=${p.lat}&lon=${p.lng}`,{signal:ctl.signal});
+    if(!r.ok) return null; const a=(await r.json()).address||{};
+    const town=a.city||a.town||a.village||a.hamlet||a.isolated_dwelling||a.municipality||'';
+    let road=a.road||a.pedestrian||a.footway||'';
+    if(road && !/^(רחוב|רח'|שדרות|שד'|דרך|כביש|סמטת|סמ'|מעלה|מעלות|כיכר|ככר|נתיב|שביל|טיילת|מבוא|משעול|ציר|גשר)/.test(road)) road='רחוב '+road;
+    const spot=a.tourism||a.natural||a.leisure||a.locality||a.suburb||a.neighbourhood||'';
+    return p._place = road ? (town?`${road} ב${town}`:road) : (town || spot || null);
+  } catch(e){ return null; } finally { clearTimeout(to); }
+}
+const share = {p:null, day:0, mode:'sunset', place:'', blob:null};
+function shareInfo(){
+  const {p, day, mode}=share, f=state.fine && state.fine.p===p && !state.fine.loading && !state.fine.error ? state.fine : null;
+  const r = f ? scoreOf(f,day,mode) : (state.F && day===state.day && mode===state.mode ? redScore(p.lat,p.lng) : null);
+  const ev=eventFor(p.lat,p.lng,day,mode), v=state.view && !state.view.error ? state.view : null;
+  return {r, ev, v, f};
+}
+function shareMessage(){
+  const {r, ev}=shareInfo(), p=share.p;
+  const head=`${dayName(share.day)} ${modeName(share.mode)}${share.place?' מ'+share.place:''}`;
+  const chance = r ? `סיכוי ${verdict(r.s)[0]} לשמיים אדומים (${Math.round(r.s*100)}%)` : '';
+  const when = ev ? `${modeName(share.mode)} ב-${fmtTime(ev.time)}` : '';
+  return [head, [chance, when].filter(Boolean).join(', '), `ניווט: ${navLink(p)}`, `התחזית: ${appLink(p)}`].join('\n');
+}
+const CARD_C = s => s>=0.45?'#ff5a40':s>=0.2?'#ff9a52':'#aab1c2';
+function wrapLines(ctx, text, maxW, max=2){
+  const out=[]; let line='';
+  for(const w of text.split(/\s+/)){ const t=line?line+' '+w:w; if(ctx.measureText(t).width>maxW && line){ out.push(line); line=w; } else line=t; }
+  if(line) out.push(line);
+  if(out.length>max){ out.length=max; out[max-1]+='…'; }
+  return out;
+}
+async function drawCard(){
+  const cv=$('shareCv'), c=cv.getContext('2d'), W=cv.width, H=cv.height, P=72, R=W-P;
+  try{ await Promise.all(['700 100px Rubik','500 50px Rubik','400 40px Heebo','500 40px Heebo','700 40px Heebo'].map(f=>document.fonts.load(f))); }catch(e){}
+  const {r, ev, v, f}=shareInfo(), s=r?r.s:0, t=Math.min(1,s/0.7), up=share.mode==='sunrise';
+  const mix=(a,b)=>a.map((x,i)=>Math.round(x+(b[i]-x)*t)), rgb=a=>`rgb(${a})`;
+  // sky: grey-blue when the chance is low, burning red-orange when high
+  const g=c.createLinearGradient(0,0,0,880);
+  g.addColorStop(0, rgb(mix([28,32,48],[38,22,58])));
+  g.addColorStop(.55, rgb(mix([62,72,96],[176,44,70])));
+  g.addColorStop(1, rgb(mix([138,148,168],[255,140,64])));
+  c.fillStyle=g; c.fillRect(0,0,W,H);
+  // a few cloud streaks catching the light
+  c.save(); c.globalAlpha=.18+.3*t; c.fillStyle=rgb(mix([200,205,215],[255,190,150]));
+  for(const [x,y,w,h] of [[180,520,520,26],[560,600,420,20],[90,690,360,18],[640,450,300,16]]){ c.beginPath(); c.ellipse(x+w/2,y,w/2,h,0,0,7); c.fill(); }
+  c.restore();
+  // sun on the horizon
+  const hy=880, sx=W/2; const glow=c.createRadialGradient(sx,hy,10,sx,hy,330);
+  glow.addColorStop(0,'rgba(255,214,140,.85)'); glow.addColorStop(1,'rgba(255,170,80,0)');
+  c.fillStyle=glow; c.fillRect(0,hy-340,W,340);
+  c.fillStyle='#ffd27a'; c.beginPath(); c.arc(sx,hy,78,Math.PI,0); c.fill();
+  // land silhouette
+  c.fillStyle='#14151f'; c.beginPath(); c.moveTo(0,H); c.lineTo(0,hy+8);
+  for(let x=0;x<=W;x+=20) c.lineTo(x, hy+10-18*Math.sin(x/140)-10*Math.sin(x/53+1)-(x<340?40*Math.sin(x/340*Math.PI):0));
+  c.lineTo(W,H); c.closePath(); c.fill();
+  c.direction='rtl'; c.textAlign='right'; c.textBaseline='alphabetic'; c.fillStyle='#fff';
+  c.font='500 34px Rubik'; c.globalAlpha=.8; c.fillText('שמיים אדומים', R, 104); c.globalAlpha=1;
+  c.font='700 84px Rubik'; c.fillText(`${dayName(share.day)} · ${modeName(share.mode)}`, R, 214);
+  c.font='500 46px Heebo'; let y=286;
+  for(const l of wrapLines(c, share.place || `${p_fmt(share.p)}`, W-2*P)){ c.fillText(l, R, y); y+=58; }
+  // the chance
+  c.font='700 230px Rubik'; c.fillText(r?Math.round(s*100)+'%':'–', R, y+200);
+  c.font='500 48px Heebo'; c.fillText(r?`סיכוי ${verdict(s)[0]} לשמיים אדומים`:'אין עדיין תחזית', R, y+272);
+  // facts on the dark ground
+  const facts=[[ev?fmtTime(ev.time):'–', `שעת ה${modeName(share.mode)}`],
+    [ev?compass(ev.az):'–', 'כיוון השמש'],
+    [r?Math.round(r.low*100)+'%':'–', 'עננים נמוכים'],
+    [r?Math.round(Math.max(r.mid,r.high)*100)+'%':'–', 'עננים גבוהים']];
+  const cw=(W-2*P)/facts.length; c.textAlign='center';
+  facts.forEach(([a,b],i)=>{ const cx=R-cw*(i+.5); c.fillStyle='#fff'; c.font='700 50px Rubik'; c.fillText(a,cx,1000); c.fillStyle='#a3a9ba'; c.font='400 28px Heebo'; c.fillText(b,cx,1042); });
+  if(v){ const hz = v.horizonDeg<0.4?'אופק פתוח':v.horizonDeg<2?`אופק מוגבה מעט (${v.horizonDeg.toFixed(1)}°)`:`רכס במרחק ${v.horizonKm.toFixed(1)} ק״מ`;
+    c.fillStyle='#c9cdd8'; c.font='400 30px Heebo'; c.fillText(`${hz} לכיוון ה${modeName(share.mode)} · גובה ${Math.round(v.elev)} מ׳`, W/2, 1108); }
+  // the coming sunrises and sunsets at this spot
+  if(f){
+    const evs=[]; for(let d=0; d<DAYS; d++) for(const m of MODES){ const x=scoreOf(f,d,m); if(x) evs.push({d,m,s:x.s,past:x.time.getTime()<Date.now()-20*60000}); }
+    const gap=10, bw=(W-2*P-gap*(evs.length-1))/evs.length, top=1170;
+    evs.forEach((e,i)=>{ const x=R-(i+1)*bw-i*gap, sel=e.d===share.day&&e.m===share.mode;
+      c.globalAlpha=e.past?.35:1; c.fillStyle=CARD_C(e.s); c.globalAlpha*= .35+.65*Math.min(1,e.s/0.6);
+      c.beginPath(); c.roundRect(x,top,bw,54,12); c.fill(); c.globalAlpha=e.past?.35:1;
+      if(sel){ c.strokeStyle='#fff'; c.lineWidth=4; c.stroke(); }
+      c.fillStyle='#fff'; c.font='700 24px Rubik'; c.fillText(Math.round(e.s*100)+'%', x+bw/2, top+36);
+      if(e.m==='sunrise'){ c.fillStyle='#a3a9ba'; c.font='400 24px Heebo'; const dn=dayName(e.d).replace(/^ב?יום /,'').replace(/^ב/,''); c.fillText(dn, x-gap/2, top+90); }
+      c.globalAlpha=1; });
+  }
+  c.fillStyle='#7d8396'; c.font='400 26px Heebo'; c.fillText(location.host+location.pathname.replace(/\/$/,''), W/2, H-40);
+  share.blob=null; cv.toBlob(b=>{ share.blob=b; }, 'image/png');
+  $('shareText').textContent=shareMessage();
+}
+const p_fmt = p => `${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`;
+$('shareBtn').onclick=async ()=>{
+  const p=state.point; if(!p) return;
+  Object.assign(share, {p, day:state.day, mode:state.mode});
+  const fav=state.favs.find(x=>x.id===state.favId);
+  share.place = fav && fav.named ? fav.name : (p._place || '');
+  $('sharePlace').value=share.place; $('shareSheet').hidden=false; drawCard();
+  if(!(fav && fav.named) && !p._place){ const n=await placeFor(p); if(n && share.p===p && !$('sharePlace').value){ share.place=n; $('sharePlace').value=n; drawCard(); } else if(!n && !share.place && fav){ share.place=fav.name; $('sharePlace').value=fav.name; drawCard(); } }
+};
+let placeT; $('sharePlace').addEventListener('input', e=>{ share.place=e.target.value.trim(); clearTimeout(placeT); placeT=setTimeout(drawCard, 250); });
+const closeShare=()=>{ $('shareSheet').hidden=true; };
+$('shareClose').onclick=closeShare; $('shareSheet').onclick=e=>{ if(e.target.id==='shareSheet') closeShare(); };
+const shareFile=()=>share.blob && new File([share.blob], 'red-sky.png', {type:'image/png'});
+$('shareGo').onclick=async ()=>{
+  const text=shareMessage(), file=shareFile();
+  // some apps drop the text when an image is attached, so it also goes to the clipboard
+  try{ navigator.clipboard && navigator.clipboard.writeText(text).catch(()=>{}); }catch(e){}
+  try{
+    if(file && navigator.canShare && navigator.canShare({files:[file]})) await navigator.share({files:[file], text});
+    else if(navigator.share) await navigator.share({text});
+    else { $('shareSave').click(); $('shareCopy').click(); return; }
+  } catch(e){ if(e.name!=='AbortError') toast('השיתוף לא הצליח. אפשר להעתיק את הטקסט ולשמור את התמונה'); }
+};
+$('shareCopy').onclick=async ()=>{ try{ await navigator.clipboard.writeText(shareMessage()); toast('הטקסט הועתק'); }catch(e){ toast('לא הצלחנו להעתיק'); } };
+$('shareSave').onclick=()=>{ if(!share.blob) return; const a=document.createElement('a'); a.href=URL.createObjectURL(share.blob); a.download='red-sky.png'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 4000); };
+
 /* ---------- install as an app ---------- */
 const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
@@ -928,7 +1071,12 @@ $('installSheet').onclick = e=>{ if(e.target.id==='installSheet') $('installShee
 /* ---------- go ---------- */
 let mvT; map.on('moveend', ()=>{ clearTimeout(mvT); mvT=setTimeout(load, 350); });
 map.on('zoomstart', ()=>{ [redOverlay,cloudOverlay].forEach(o=>o&&o.setOpacity(0.35)); });
-idb.loadAll().then(es=>es.forEach(([k,v])=>cache.set(k,v))).finally(()=>load().then(()=>{ if(state.favs.length) refreshFavs(); }));
+const atParam=(new URLSearchParams(location.search).get('at')||'').split(',').map(Number);
+const deepLink = atParam.length===2 && atParam.every(isFinite) && Math.abs(atParam[0])<=90 ? L.latLng(atParam[0], atParam[1]) : null;
+if(deepLink){ map.setView(deepLink, 11); history.replaceState(null,'',location.pathname); }
+idb.loadAll().then(es=>es.forEach(([k,v])=>cache.set(k,v))).finally(()=>load().then(()=>{
+  if(deepLink){ selectPoint(deepLink); openPanel('point'); }
+  if(state.favs.length) refreshFavs(); }));
 </script>
 </body>
 </html>
