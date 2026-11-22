@@ -68,6 +68,11 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .ev.past{opacity:.45}
 .ev[aria-pressed="true"]{background:var(--sel);color:var(--sel-fg);opacity:1}
 .ev[aria-pressed="true"] .t{color:inherit}
+.ev{position:relative;--hot:transparent}
+.ev::after{content:"";position:absolute;left:9px;right:9px;bottom:3px;height:4px;border-radius:2px;background:var(--hot)}
+.scored .ev{background:linear-gradient(to top,var(--hot),transparent 70%)}
+.scored .ev[aria-pressed="true"]{background:var(--sel)}
+.ev[data-pct]::before{content:attr(data-pct) "%";position:absolute;top:1px;inset-inline-end:1px;font:700 10px/14px var(--f-display);padding:0 4px;border-radius:7px;background:var(--hot);color:#fff;font-variant-numeric:tabular-nums;box-shadow:0 1px 3px rgba(0,0,0,.25)}
 
 /* side buttons: bottom right, above the timeline */
 .side{position:fixed;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(var(--tl-b) + var(--tl-h) + 12px);z-index:1100;display:flex;flex-direction:column;gap:8px}
@@ -108,6 +113,26 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .facing{font-size:13.5px;text-align:center;margin-top:2px}
 .empty{font-size:14px;color:var(--muted)}
 
+/* favourites */
+.favrow{display:flex;align-items:center;gap:8px;margin:-2px 0 10px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.star{display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;font-size:13.5px;font-weight:500;background:var(--line);flex:none}
+.star svg{width:16px;height:16px}
+.star[aria-pressed="true"]{background:#ffb54733;color:#b86a00}
+.favrow input{flex:1;min-width:0;font:inherit;font-size:14px;color:var(--fg);background:transparent;border:0;border-bottom:1px dashed var(--line);padding:4px 2px}
+.favrow input:focus{outline:none;border-bottom-color:var(--accent)}
+.fav{display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 8px;padding:10px 2px;border-bottom:1px solid var(--line)}
+.fav:last-child{border-bottom:0}
+.fav .go{display:flex;flex-direction:column;align-items:flex-start;gap:5px;text-align:start;min-width:0}
+.fav .nm{font-weight:500;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.fav .best{font-size:12.5px;color:var(--muted)}
+.fav .best b{color:var(--good)}
+.strip{display:flex;gap:2px}
+.strip i{width:14px;height:8px;border-radius:2px;background:var(--line)}
+.strip i:nth-child(2n){margin-inline-end:4px}
+.strip i.past{opacity:.35}
+.fav .del{width:30px;height:30px;border-radius:50%;color:var(--muted);font-size:18px;line-height:1}
+.dot{position:absolute;top:-3px;left:-3px;width:11px;height:11px;border-radius:50%;background:var(--accent);border:2px solid var(--panel-solid)}
+
 /* sun direction overlay (screen space) */
 #sunsvg{position:fixed;inset:0;width:100%;height:100%;z-index:500;pointer-events:none}
 /* info sheet */
@@ -142,6 +167,10 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></svg>
     <span class="badge" id="badge" hidden></span>
   </button>
+  <button class="glass" id="favBtn" aria-expanded="false" aria-controls="favPanel" title="המקומות שלי" aria-label="המקומות שלי">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg>
+    <span class="dot" id="favDot" hidden></span>
+  </button>
   <button class="glass" id="locate" title="המיקום שלי" aria-label="המיקום שלי">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
   </button>
@@ -158,7 +187,14 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   </div>
 </div>
 
-<div class="panel glass" id="pointPanel" hidden></div>
+<div class="panel glass" id="pointPanel" hidden>
+  <div class="favrow" id="favRow" hidden>
+    <button class="star" id="starBtn" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/></svg><span>שמירה</span></button>
+    <input id="favName" placeholder="שם המקום" aria-label="שם המקום" hidden maxlength="40">
+  </div>
+  <div id="pointBody"></div>
+</div>
+<div class="panel glass" id="favPanel" hidden></div>
 
 <div class="sheet" id="sheet" hidden>
   <div class="box">
@@ -166,7 +202,8 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <p>עננים נצבעים באדום אחרי השקיעה (או לפני הזריחה), כשהשמש כבר מתחת לאופק אבל הקרניים שלה עדיין מגיעות אל העננים מלמטה.</p>
     <p>לכל נקודה במפה נבדקים שני דברים: האם יש מעליה עננים בינוניים או גבוהים (מ-3 ק״מ ומעלה, כולל ענני נוצה בגובה 8 ק״מ) שיכולים להיצבע, והאם הדרך של קרני השמש אליהם, לאורך מאות קילומטרים לכיוון השמש, פנויה מעננים שיחסמו את האור. כשבוחרים נקודה, התחזית לאורך כיוון השמש שלה נשלפת בצפיפות גבוהה יותר, כדי לדייק את הסיכוי. עננים נמוכים מעל הנקודה מורידים את הסיכוי, כי הם מסתירים את השמיים.</p>
     <p>הקישו על המפה כדי לבחור נקודה, ופתחו את כפתור הנקודה בצד כדי לראות את הנתונים שלה.</p>
-    <p class="small">תחזית עננים: Open-Meteo. גובה פני השטח: Terrain Tiles (AWS). זו הערכה מבוססת תחזית, לא הבטחה.</p>
+    <p>ציר הזמן למטה נצבע לפי הסיכוי בנקודה שבחרתם, כך שרואים מיד באיזו זריחה או שקיעה כדאי לצאת. מקומות ששומרים בכוכב נבדקים בכל פתיחה של האפליקציה, וכשיש סיכוי טוב באחד מהם תופיע הודעה.</p>
+    <p class="small">תחזית עננים: Open-Meteo. גובה פני השטח: Terrain Tiles (AWS). שמות מקומות: OpenStreetMap (Nominatim, Overpass). זו הערכה מבוססת תחזית, לא הבטחה.</p>
     <button class="ok" id="sheetOk">הבנתי</button>
   </div>
 </div>
@@ -245,14 +282,15 @@ $('toggles').addEventListener('click', e=>{ const b=e.target.closest('.tog'); if
 
 /* ---------- panels ---------- */
 function openPanel(which){
-  const pairs=[['layers',$('layersBtn'),$('layersPanel')],['point',$('pointBtn'),$('pointPanel')]];
-  for(const [n,btn,pan] of pairs){ const on = n===which && pan.hidden; pan.hidden=!on; btn.setAttribute('aria-expanded',String(on)); }
+  for(const n of ['layers','point','fav']){ const btn=$(n+'Btn'), pan=$(n+'Panel'), on = n===which && pan.hidden; pan.hidden=!on; btn.setAttribute('aria-expanded',String(on)); }
   if(which==='point' && !$('pointPanel').hidden) updatePoint();
+  if(which==='fav' && !$('favPanel').hidden) renderFavs();
 }
 $('layersBtn').onclick=()=>openPanel('layers');
 $('pointBtn').onclick=()=>openPanel('point');
-document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ $('layersPanel').hidden=$('pointPanel').hidden=true; $('sheet').hidden=true;
-  $('layersBtn').setAttribute('aria-expanded','false'); $('pointBtn').setAttribute('aria-expanded','false'); }});
+$('favBtn').onclick=()=>openPanel('fav');
+const anyPanel = () => ['layers','point','fav'].find(n=>!$(n+'Panel').hidden);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ const n=anyPanel(); if(n) openPanel(n); $('sheet').hidden=true; }});
 $('infoBtn').onclick = ()=>{ $('sheet').hidden=false; };
 $('sheetOk').onclick = ()=>{ $('sheet').hidden=true; };
 $('sheet').onclick = e=>{ if(e.target.id==='sheet') $('sheet').hidden=true; };
@@ -293,7 +331,13 @@ function updateTimeline(){
     b.querySelector('.t').textContent = ev?fmtTime(ev.time):'–';
     b.classList.toggle('past', !!ev && ev.time.getTime()<now-20*60000);
     b.setAttribute('aria-pressed', String(+b.dataset.day===state.day && b.dataset.mode===state.mode));
+    // colour each sunrise/sunset by the red-sky chance at the chosen point
+    const r=state.point ? fineScore(+b.dataset.day,b.dataset.mode) : null;
+    if(r){ const c=ramp(RED_STOPS, r.s); b.style.setProperty('--hot',`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${(Math.max(c[3],0)/255).toFixed(2)})`);
+      if(r.s>=0.2) b.dataset.pct=Math.round(r.s*100); else delete b.dataset.pct; b.title=`סיכוי ${Math.round(r.s*100)}%`; }
+    else { b.style.removeProperty('--hot'); delete b.dataset.pct; b.removeAttribute('title'); }
   }
+  $('track').classList.toggle('scored', !!(state.point && fineScore()));
 }
 function pickNext(){ // start on the next sunrise/sunset still to come (or within the last 20 minutes)
   const c=map.getCenter(), now=Date.now()-20*60000;
@@ -315,17 +359,17 @@ buildTimeline(); pickNext(); updateTimeline(); requestAnimationFrame(()=>scrollT
 })();
 $('track').addEventListener('click', e=>{ const b=e.target.closest('.ev'); if(!b) return;
   state.day=+b.dataset.day; state.mode=b.dataset.mode; updateTimeline(); scrollToSelected(true);
-  if(state.point){ computeView(); refinePoint(); } load(); });
+  if(state.point) computeView(); load(); });
 $('locate').onclick = ()=>{
   if(!navigator.geolocation) return toast('הדפדפן לא מאפשר איתור מיקום');
   navigator.geolocation.getCurrentPosition(p=>{ const ll=L.latLng(p.coords.latitude,p.coords.longitude); map.setView(ll, Math.max(map.getZoom(),10)); selectPoint(ll); },
     ()=>toast('לא הצלחנו לאתר את המיקום'), {timeout:8000});
 };
 let toastTimer;
-function toast(msg, retry){
+function toast(msg, retry, ms=3500){
   const t=$('toast'); t.innerHTML=''; t.append(msg);
   if(retry){ const b=document.createElement('button'); b.textContent='נסו שוב'; b.onclick=()=>{t.hidden=true; retry();}; t.append(b); }
-  t.hidden=false; clearTimeout(toastTimer); if(!retry) toastTimer=setTimeout(()=>t.hidden=true, 3500);
+  t.hidden=false; clearTimeout(toastTimer); if(!retry) toastTimer=setTimeout(()=>t.hidden=true, ms);
 }
 function setStatus(html, loading){ $('status').innerHTML=(loading?'<span class="spin"></span>':'')+html; }
 
@@ -450,33 +494,161 @@ function redScore(lat, lon){
   return scoreFrom(sample(F.low,lat,lon), sample(F.mid,lat,lon), sample(F.high,lat,lon), (layer,x)=>sample(F[layer], lat+x*dLat, lon+x*dLon));
 }
 
-/* ---------- point refinement: dense forecast only along the sun direction of the chosen point ---------- */
-const FINE = 0.05, LINE_STEP = 15;
+/* ---------- point refinement: dense forecast along the chosen point's sunrise and sunset directions ----------
+   One fetch covers every sunrise and sunset in the timeline: the sun's azimuth drifts well under 1° over 5 days,
+   so each direction's line is laid out once (for the middle day) and reused for all days. */
+const FINE = 0.05, LINE_STEP = 15, MODES = ['sunrise','sunset'];
 const snap = v => +(Math.round(v/FINE)*FINE).toFixed(3);
-const tagNow = () => state.mode+'|'+state.day;
-async function refinePoint(){
-  const p=state.point; if(!p) return; const ev=eventFor(p.lat,p.lng); if(!ev) return;
-  const tag=tagNow(), K=(a,b)=>a+','+b;
-  const line=[]; for(let x=0;x<=PATH_KM;x+=LINE_STEP){ const [la,lo]=offset(p.lat,p.lng,ev.az,x); line.push(K(snap(la),snap(lo))); }
+async function fetchFine(p){
+  const K=(a,b)=>a+','+b, lines={};
+  for(const m of MODES){ const ev=eventFor(p.lat,p.lng,2,m); if(!ev) continue; lines[m]=[];
+    for(let x=0;x<=PATH_KM;x+=LINE_STEP){ const [la,lo]=offset(p.lat,p.lng,ev.az,x); lines[m].push(K(snap(la),snap(lo))); } }
   const la0=+(Math.floor(p.lat/FINE)*FINE).toFixed(3), lo0=+(Math.floor(p.lng/FINE)*FINE).toFixed(3), la1=+(la0+FINE).toFixed(3), lo1=+(lo0+FINE).toFixed(3);
   const box=[K(la0,lo0),K(la0,lo1),K(la1,lo0),K(la1,lo1)];
-  const keys=[...new Set([...line,...box])], missing=keys.filter(k=>!cache.has(k)).map(k=>{ const [a,b]=k.split(',').map(Number); return [a,b,k]; });
-  state.fine={p, tag, loading:true}; updatePoint();
-  try{ for(let i=0;i<missing.length;i+=100){ await fetchChunk(missing.slice(i,i+100)); if(state.point!==p || tag!==tagNow()) return; } }
-  catch(err){ if(state.point===p && tag===tagNow()){ state.fine={p, tag, error:true}; updatePoint(); } return; }
-  if(state.point!==p || tag!==tagNow()) return;
-  const hF=ev.time.getTime()/3600000, v=(k,l)=>at(cache.get(k),l,hF);
-  const fy=(p.lat-la0)/FINE, fx=(p.lng-lo0)/FINE;
-  const bil=l=>(v(box[0],l)*(1-fx)+v(box[1],l)*fx)*(1-fy)+(v(box[2],l)*(1-fx)+v(box[3],l)*fx)*fy;
-  state.fine={p, tag, n:keys.length, low:bil('low'), mid:bil('mid'), high:bil('high'),
-    line:{low:line.map(k=>v(k,'low')), mid:line.map(k=>v(k,'mid')), high:line.map(k=>v(k,'high'))}};
+  const keys=[...new Set([...Object.values(lines).flat(),...box])], missing=keys.filter(k=>!cache.has(k)).map(k=>{ const [a,b]=k.split(',').map(Number); return [a,b,k]; });
+  for(let i=0;i<missing.length;i+=100) await fetchChunk(missing.slice(i,i+100));
+  return {p, n:keys.length, lines, box, fy:(p.lat-la0)/FINE, fx:(p.lng-lo0)/FINE, memo:new Map()};
+}
+function scoreOf(f, day, mode){
+  if(!f.lines[mode]) return null;
+  const id=day+mode; if(f.memo.has(id)) return f.memo.get(id);
+  const ev=eventFor(f.p.lat,f.p.lng,day,mode); if(!ev) return null;
+  const hF=ev.time.getTime()/3600000, v=(k,l)=>at(cache.get(k),l,hF), b=f.box, fx=f.fx, fy=f.fy;
+  const bil=l=>(v(b[0],l)*(1-fx)+v(b[1],l)*fx)*(1-fy)+(v(b[2],l)*(1-fx)+v(b[3],l)*fx)*fy;
+  const line={}; for(const l of ['low','mid','high']) line[l]=f.lines[mode].map(k=>v(k,l));
+  const along=(arr,x)=>{ const i=x/LINE_STEP, k=Math.min(arr.length-2,Math.floor(i)), t=Math.min(1,i-k); return arr[k]+(arr[k+1]-arr[k])*t; };
+  const r=scoreFrom(bil('low'), bil('mid'), bil('high'), (layer,x)=>along(line[layer], x));
+  r.time=ev.time; f.memo.set(id,r); return r;
+}
+async function refinePoint(){
+  const p=state.point; if(!p) return;
+  state.fine={p, loading:true}; updatePoint();
+  try{ const f=await fetchFine(p); if(state.point!==p) return; state.fine=f; if(state.favId!=null && !favData.has(state.favId)) favData.set(state.favId, f); }
+  catch(err){ if(state.point!==p) return; state.fine={p, error:true}; }
   updatePoint();
 }
-function fineScore(){
-  const f=state.fine; if(!f || f.p!==state.point || f.tag!==tagNow() || f.loading || f.error) return null;
-  const along=(arr,x)=>{ const i=x/LINE_STEP, k=Math.min(arr.length-2,Math.floor(i)), t=Math.min(1,i-k); return arr[k]+(arr[k+1]-arr[k])*t; };
-  return scoreFrom(f.low, f.mid, f.high, (layer,x)=>along(f.line[layer], x));
+function fineScore(day=state.day, mode=state.mode){
+  const f=state.fine; if(!f || f.p!==state.point || f.loading || f.error) return null;
+  return scoreOf(f, day, mode);
 }
+
+/* ---------- favourite places (kept on this device) ---------- */
+// Each saved place gets the same dense forecast as a selected point; on opening the app we look for good chances.
+const GOOD = 0.45;
+state.favs = store.get('favs', []); state.favId = null;
+const favData = new Map(); // id -> fine forecast object, or {error}
+const saveFavs = () => store.set('favs', state.favs.map(({id,name,lat,lng,named})=>({id,name,lat,lng,named})));
+const dayName = i => { const d=new Date(); d.setDate(d.getDate()+i); return i===0?'היום':i===1?'מחר':'ב'+d.toLocaleDateString('he-IL',{weekday:'long'}); };
+const modeName = m => m==='sunset'?'שקיעה':'זריחה';
+function favEvents(f){ // every upcoming sunrise/sunset with its score
+  const out=[], now=Date.now()-20*60000;
+  for(let d=0; d<DAYS; d++) for(const m of MODES){ const r=scoreOf(f,d,m); out.push({d, m, r, past:!r || r.time.getTime()<now}); }
+  return out;
+}
+function favBest(f){ return favEvents(f).filter(e=>!e.past).sort((a,b)=>b.r.s-a.r.s)[0]; }
+async function refreshFavs(only){
+  for(const fav of state.favs){
+    if(only && fav.id!==only) continue;
+    try{ favData.set(fav.id, await fetchFine(L.latLng(fav.lat,fav.lng))); }
+    catch(e){ favData.set(fav.id, {error:true}); if(e.rate) break; }
+    if(!$('favPanel').hidden) renderFavs();
+  }
+  favAlert(!only);
+}
+function favAlert(announce){
+  const good=state.favs.map(fav=>{ const f=favData.get(fav.id); const b=f&&!f.error?favBest(f):null; return b&&b.r.s>=GOOD?{fav,b}:null; })
+    .filter(Boolean).sort((a,b)=>a.b.d-b.b.d || b.b.r.s-a.b.r.s);
+  $('favDot').hidden=!good.length;
+  if(announce && good.length){ const {fav,b}=good[0];
+    toast(`סיכוי טוב לשמיים אדומים ב${fav.name}: ${dayName(b.d)} ב${modeName(b.m)} (${Math.round(b.r.s*100)}%)`+(good.length===2?', ובעוד מקום אחד':good.length>2?`, ובעוד ${good.length-1} מקומות`:''), null, 7000); }
+}
+function renderFavs(){
+  const el=$('favPanel');
+  if(!state.favs.length){ el.innerHTML='<h3>המקומות שלי</h3><div class="empty">עוד לא שמרתם מקומות. בחרו נקודה במפה, פתחו את נתוני הנקודה ולחצו על "שמירה".</div>'; return; }
+  el.innerHTML='<h3>המקומות שלי</h3>'+state.favs.map(fav=>{
+    const f=favData.get(fav.id); let strip='', best='<span class="spin" style="display:inline-block;vertical-align:-1px"></span>';
+    if(f && f.error) best='לא הצלחנו לטעון תחזית';
+    else if(f){
+      strip='<span class="strip">'+favEvents(f).map(e=>{ const c=e.r?ramp(RED_STOPS,e.r.s):null;
+        return `<i class="${e.past?'past':''}" title="${dayName(e.d)}, ${modeName(e.m)}${e.r?' '+Math.round(e.r.s*100)+'%':''}" style="${c&&c[3]>20?`background:rgba(${c[0]|0},${c[1]|0},${c[2]|0},${(c[3]/255).toFixed(2)})`:''}"></i>`; }).join('')+'</span>';
+      const b=favBest(f);
+      best = b && b.r.s>=0.2 ? `הכי טוב: ${dayName(b.d)} ב${modeName(b.m)} <b>${Math.round(b.r.s*100)}%</b>` : 'אין סיכוי של ממש בימים הקרובים';
+    }
+    return `<div class="fav"><button class="go" data-id="${fav.id}"><span class="nm"></span>${strip}<span class="best">${best}</span></button>
+      <button class="del" data-del="${fav.id}" aria-label="מחיקה" title="מחיקה">×</button></div>`;
+  }).join('');
+  [...el.querySelectorAll('.go .nm')].forEach((n,i)=>n.textContent=state.favs[i].name); // names are user text: set safely
+}
+$('favPanel').addEventListener('click', e=>{
+  const del=e.target.closest('[data-del]'), go=e.target.closest('.go');
+  if(del){ const id=+del.dataset.del; state.favs=state.favs.filter(f=>f.id!==id); favData.delete(id); saveFavs();
+    if(state.favId===id) state.favId=null; renderFavs(); favAlert(false); updateFavRow(); return; }
+  if(go){ const fav=state.favs.find(f=>f.id===+go.dataset.id); if(!fav) return; openPanel('fav');
+    const ll=L.latLng(fav.lat,fav.lng); map.setView(ll, Math.max(map.getZoom(),10)); selectPoint(ll, fav.id); openPanel('point'); }
+});
+// Default name for a saved place. Two OpenStreetMap lookups:
+//  1. Nominatim (fast, reliable): the settlement or neighbourhood the point is in.
+//  2. Overpass (public servers are often busy, so it's optional): the nearest named settlement, junction or
+//     landmark within a few km; replaces the first name when it answers in time.
+async function settlementName(lat, lng){
+  const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=14&accept-language=he&lat=${lat}&lon=${lng}`);
+  if(!r.ok) throw new Error('nominatim '+r.status);
+  const j=await r.json(), a=j.address||{};
+  return a.village||a.town||a.city||a.hamlet||a.isolated_dwelling||a.suburb||a.neighbourhood||a.locality||a.natural||null;
+}
+async function nearestFeature(lat, lng){
+  const A=r=>`(around:${r},${lat},${lng})`;
+  const q=`[out:json][timeout:8];(
+    node${A(6000)}[place~"^(city|town|village|hamlet|suburb|neighbourhood|quarter|locality|isolated_dwelling|farm)$"][name];
+    node${A(4000)}[highway=motorway_junction][name];
+    node${A(4000)}[junction][name];
+    node${A(3000)}[natural~"^(peak|spring|cape|cliff)$"][name];
+    node${A(3000)}[tourism~"^(viewpoint|attraction)$"][name];
+    node${A(3000)}[historic~"^(archaeological_site|ruins|castle|fort|monument)$"][name];
+  );out tags 300;`;
+  const ctl=new AbortController(), to=setTimeout(()=>ctl.abort(), 9000);
+  try{
+    const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',signal:ctl.signal,body:'data='+encodeURIComponent(q),headers:{'Content-Type':'application/x-www-form-urlencoded'}});
+    if(!r.ok) return null;
+    const k=Math.cos(lat*D2R); let best=null, bd=Infinity;
+    for(const e of (await r.json()).elements||[]){
+      const name=e.tags['name:he']||e.tags.name, d=Math.hypot(e.lat-lat,(e.lon-lng)*k);
+      if(name && d<bd){ bd=d; best=name; }
+    }
+    return best;
+  } finally { clearTimeout(to); }
+}
+function autoName(fav){
+  const apply=name=>{
+    if(!name || fav.named || !state.favs.includes(fav)) return;
+    let n=name, i=2; while(state.favs.some(f=>f!==fav && f.name===n)) n=`${name} ${i++}`;
+    fav.name=n; saveFavs();
+    const inp=$('favName');
+    if(state.favId===fav.id){ const sel=document.activeElement===inp; inp.value=n; if(sel) inp.select(); }
+    if(!$('favPanel').hidden) renderFavs();
+  };
+  let precise=false;
+  nearestFeature(fav.lat, fav.lng).then(n=>{ if(n){ precise=true; apply(n); } }).catch(()=>{});
+  settlementName(fav.lat, fav.lng).then(n=>{ if(!precise) apply(n); }).catch(err=>console.warn('place name lookup failed', err));
+}
+function updateFavRow(){
+  const row=$('favRow'), p=state.point; row.hidden=!p; if(!p) return;
+  const fav=state.favs.find(f=>f.id===state.favId);
+  $('starBtn').setAttribute('aria-pressed', String(!!fav)); $('starBtn').querySelector('span').textContent = fav?'שמור':'שמירה';
+  $('starBtn').querySelector('path').setAttribute('fill', fav?'currentColor':'none');
+  const inp=$('favName'); inp.hidden=!fav; if(fav && document.activeElement!==inp) inp.value=fav.name;
+}
+$('starBtn').onclick=()=>{
+  const p=state.point; if(!p) return;
+  if(state.favId!=null){ const id=state.favId; state.favs=state.favs.filter(f=>f.id!==id); favData.delete(id); state.favId=null; }
+  else { let n=state.favs.length+1; while(state.favs.some(f=>f.name==='מקום '+n)) n++;
+    const fav={id:Date.now(), name:'מקום '+n, lat:+p.lat.toFixed(5), lng:+p.lng.toFixed(5)}; state.favs.push(fav); state.favId=fav.id; autoName(fav);
+    if(state.fine && state.fine.p===p && !state.fine.loading && !state.fine.error) favData.set(fav.id, state.fine); else refreshFavs(fav.id);
+    setTimeout(()=>{ $("favName").focus(); $("favName").select(); }, 80); }
+  saveFavs(); updateFavRow(); favAlert(false);
+};
+$('favName').addEventListener('input', e=>{ const fav=state.favs.find(f=>f.id===state.favId); if(!fav) return; fav.name=e.target.value.trim()||fav.name; fav.named=true; saveFavs(); });
+$('favName').addEventListener('keydown', e=>{ if(e.key==='Enter') e.target.blur(); });
 
 /* ---------- rendering ---------- */
 let cloudOverlay=null, redOverlay=null, viewOverlay=null, pinMarker=null;
@@ -501,16 +673,17 @@ function render(){
 
 /* ---------- selected point ---------- */
 function verdict(s){ return s>=0.7?['מרהיב','var(--good)']:s>=0.45?['טוב','var(--good)']:s>=0.2?['בינוני','var(--mid)']:['נמוך','var(--low)']; }
-function selectPoint(ll){
-  state.point=ll;
+function selectPoint(ll, favId=null){
+  state.point=ll; state.favId=favId;
   if(!pinMarker) pinMarker=L.marker(ll,{icon:L.divIcon({className:'',html:'<div class="pin"></div>',iconSize:[18,18],iconAnchor:[9,9]}),keyboard:false,interactive:false}).addTo(map);
   else pinMarker.setLatLng(ll);
-  state.view=null; renderView(); updatePoint(); computeView(); refinePoint();
+  state.view=null; renderView(); updatePoint(); computeView();
+  const known=favId!=null && favData.get(favId);   // a saved place may already have its forecast
+  if(known && !known.error){ known.p=ll; known.memo.clear(); state.fine=known; updatePoint(); } else refinePoint();
 }
 map.on('click', e=>{
   // a tap on the map while a panel is open only closes it; the point panel reopens from its button
-  if(!$('layersPanel').hidden){ openPanel('layers'); return; }
-  if(!$('pointPanel').hidden){ openPanel('point'); return; }
+  const open=anyPanel(); if(open){ openPanel(open); return; }
   selectPoint(e.latlng);
 });
 function clearPoint(){
@@ -545,13 +718,14 @@ function drawSunLine(){
 map.on('move zoom resize', ()=>drawSunLine()); addEventListener('resize', ()=>drawSunLine());
 function updatePoint(){
   const badge=$('badge'), pan=$('pointPanel'), p=state.point;
-  drawSunLine();
+  drawSunLine(); updateTimeline();
   if(!p || !state.F){ badge.hidden=true; }
   const fine = p ? fineScore() : null;
   const r = fine || (p && state.F ? redScore(p.lat,p.lng) : null);
   if(r){ badge.hidden=false; badge.textContent=Math.round(r.s*100)+'%'; badge.style.background=verdict(r.s)[1]; }
   if(pan.hidden) return;
-  if(!p){ pan.innerHTML='<div class="empty">הקישו על המפה כדי לבחור נקודה.</div>'; return; }
+  updateFavRow(); const body=$('pointBody');
+  if(!p){ body.innerHTML='<div class="empty">הקישו על המפה כדי לבחור נקודה.</div>'; return; }
   const ev=eventFor(p.lat,p.lng), label=state.mode==='sunset'?'שקיעה':'זריחה';
   let html='';
   if(r){
@@ -573,7 +747,7 @@ function updatePoint(){
   if(!v) html+='<div class="empty" style="margin-top:12px;display:flex;gap:8px;align-items:center"><span class="spin"></span>מחשב שדה ראייה…</div>';
   else if(v.error) html+='<div class="empty" style="margin-top:12px">לא הצלחנו לטעון נתוני גובה.</div>';
   else html+=roseSvg(v, ev?ev.az:null)+facingText(v);
-  pan.innerHTML=html;
+  body.innerHTML=html;
 }
 // Compass rose: one wedge per 22.5°, length = share of that direction you can see (out to the horizon)
 function roseSvg(v, sunAz){
@@ -695,7 +869,7 @@ $('installSheet').onclick = e=>{ if(e.target.id==='installSheet') $('installShee
 /* ---------- go ---------- */
 let mvT; map.on('moveend', ()=>{ clearTimeout(mvT); mvT=setTimeout(load, 350); });
 map.on('zoomstart', ()=>{ [redOverlay,cloudOverlay].forEach(o=>o&&o.setOpacity(0.35)); });
-load();
+load().then(()=>{ if(state.favs.length) refreshFavs(); });
 </script>
 </body>
 </html>
