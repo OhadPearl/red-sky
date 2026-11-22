@@ -388,10 +388,29 @@ function ramp(stops, v){
 
 /* ---------- cloud forecast (Open-Meteo) ---------- */
 // One request per grid point brings 5 days of hourly data, so switching day or sunset/sunrise costs nothing.
-const cache = new Map(); // `${lat},${lon}` -> {t0, low[], mid[], high[]}
+// Open-Meteo counts every location as one call (free: 600/min, 5,000/hour, 10,000/day, per IP). To stay well inside:
+//  · forecasts are kept on the device (IndexedDB) for CACHE_TTL, so reopening the app costs nothing;
+//  · grid spacings are powers of two, so a coarse grid is a subset of a finer one and zooming reuses points;
+//  · every request goes through one paced queue that stays under our own per-minute/hour budget.
+const CACHE_TTL = 2*3600e3, BUDGET_MIN = 480, BUDGET_HOUR = 4500;
+const cache = new Map(); // `${lat},${lon}` -> {t0, low[], mid[], high[], at}
+const fresh = k => { const r=cache.get(k); return !!r && Date.now()-r.at < CACHE_TTL; };
+const keyPt = k => { const [a,b]=k.split(',').map(Number); return [a,b,k]; };
 function offset(lat, lon, az, km){
   return [lat + km*Math.cos(az*D2R)/111.32, lon + km*Math.sin(az*D2R)/(111.32*Math.cos(lat*D2R))];
 }
+const idb = (()=>{ // tiny IndexedDB wrapper; silently does nothing where storage is unavailable
+  let dbp=null;
+  const open=()=>dbp||(dbp=new Promise((res,rej)=>{ const r=indexedDB.open('redsky',1);
+    r.onupgradeneeded=()=>r.result.createObjectStore('fc'); r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); }));
+  return {
+    async loadAll(){ try{ const db=await open(); return await new Promise(res=>{ const out=[], tx=db.transaction('fc','readwrite');
+      tx.objectStore('fc').openCursor().onsuccess=e=>{ const c=e.target.result; if(!c) return res(out);
+        if(Date.now()-c.value.at>CACHE_TTL) c.delete(); else out.push([c.key,c.value]); c.continue(); };
+      tx.onerror=()=>res(out); }); }catch(e){ return []; } },
+    async put(entries){ try{ const db=await open(), st=db.transaction('fc','readwrite').objectStore('fc'); entries.forEach(([k,v])=>st.put(v,k)); }catch(e){} },
+  };
+})();
 async function fetchChunk(pts){
   const url = 'https://api.open-meteo.com/v1/forecast?latitude='+pts.map(p=>p[0].toFixed(3)).join(',')
     +'&longitude='+pts.map(p=>p[1].toFixed(3)).join(',')
@@ -400,65 +419,102 @@ async function fetchChunk(pts){
   if(r.status===429) throw Object.assign(new Error('rate'),{rate:true});
   if(!r.ok) throw new Error('forecast '+r.status);
   let j = await r.json(); if(!Array.isArray(j)) j=[j];
-  const f = a => Float32Array.from(a, v => v==null?0:v/100);
-  j.forEach((loc,i)=>{ const H=loc.hourly;
-    cache.set(pts[i][2], {t0:H.time[0]/3600, low:f(H.cloud_cover_low), mid:f(H.cloud_cover_mid), high:f(H.cloud_cover_high)}); });
+  const f = a => Float32Array.from(a, v => v==null?0:v/100), now=Date.now(), put=[];
+  j.forEach((loc,i)=>{ const H=loc.hourly, rec={t0:H.time[0]/3600, low:f(H.cloud_cover_low), mid:f(H.cloud_cover_mid), high:f(H.cloud_cover_high), at:now};
+    cache.set(pts[i][2], rec); put.push([pts[i][2], rec]); });
+  idb.put(put);
+}
+// paced queue: one request at a time, never more than our budget per minute / hour
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const sent = store.get('sent', []).filter(([t])=>Date.now()-t<3600e3); // [time, locations] — survives reopening
+const used = ms => sent.reduce((a,[t,n])=>Date.now()-t<ms?a+n:a, 0);
+const inflight = new Map(); let chain = Promise.resolve(), waitNote = 0;
+function ensure(pts, alive=()=>true){
+  const waits=new Set(), todo=[];
+  for(const p of pts){ if(fresh(p[2])) continue; const j=inflight.get(p[2]); if(j){ j.alive.push(alive); waits.add(j.pr); } else todo.push(p); }
+  for(let i=0;i<todo.length;i+=100){
+    const job={pts:todo.slice(i,i+100), alive:[alive]};
+    job.pr = chain = chain.catch(()=>{}).then(()=>runJob(job));
+    job.pts.forEach(p=>inflight.set(p[2],job));
+    job.pr.catch(()=>{}).finally(()=>job.pts.forEach(p=>{ if(inflight.get(p[2])===job) inflight.delete(p[2]); }));
+    waits.add(job.pr);
+  }
+  return Promise.all(waits);
+}
+async function runJob(job){
+  for(let tries=0;;tries++){
+    if(!job.alive.some(f=>f())) return;               // nobody needs these points any more (map moved on)
+    const pts=job.pts.filter(p=>!fresh(p[2])); if(!pts.length) return;
+    if(used(3600e3)+pts.length>BUDGET_HOUR) throw Object.assign(new Error('hour'),{rate:true,hour:true});
+    if(used(60e3)+pts.length>BUDGET_MIN){              // wait for the oldest requests to leave the 1-minute window
+      if(Date.now()-waitNote>20e3){ waitNote=Date.now(); toast('הרבה בקשות בדקה האחרונה. משלים את התחזית בעוד כמה שניות…'); }
+      await sleep(2000); tries--; continue;
+    }
+    sent.push([Date.now(), pts.length]); store.set('sent', sent.filter(([t])=>Date.now()-t<3600e3));
+    try{ return await fetchChunk(pts); }
+    catch(e){ if(e.rate && tries<2){ toast('שירות התחזית מגביל בקשות כרגע. ממשיך אוטומטית בעוד דקה…'); await sleep(61000); continue; } throw e; }
+  }
 }
 function at(rec, layer, hourF){
   const a=rec[layer], x=Math.max(0,Math.min(a.length-1.001, hourF-rec.t0)), i=Math.floor(x);
   return a[i]+(a[i+1]-a[i])*(x-i);
 }
+// grids: spacing from NEST (powers of two) so coarse points are always also fine points
+const NEST = [0.125, 0.25, 0.5, 1, 2, 4], NEAR_MAX = 150, FAR_MAX = 120;
+function lattice(box, step){
+  const [s,w,n,e]=box, lat0=Math.floor(s/step)*step, lon0=Math.floor(w/step)*step;
+  const nLat=Math.floor(n/step)-Math.floor(s/step)+2, nLon=Math.floor(e/step)-Math.floor(w/step)+2, keys=[];
+  for(let i=0;i<nLat;i++) for(let k=0;k<nLon;k++) keys.push(+(lat0+i*step).toFixed(3)+','+(+(lon0+k*step).toFixed(3)));
+  return {lat0,lon0,step,nLat,nLon,keys};
+}
+const stepFor = (box, max, min=0) => NEST.find(st=>st>=min && lattice(box,st).keys.length<=max) || 4;
+function fill(g, hourF, fallback){ // values at the event time; points not loaded (yet) borrow from the coarser grid
+  const N=g.keys.length; g.low=new Float32Array(N); g.mid=new Float32Array(N); g.high=new Float32Array(N);
+  g.keys.forEach((k,i)=>{ const r=cache.get(k);
+    if(r){ g.low[i]=at(r,'low',hourF); g.mid[i]=at(r,'mid',hourF); g.high[i]=at(r,'high',hourF); }
+    else if(fallback){ const [la,lo]=k.split(',').map(Number); g.low[i]=sampleGrid(fallback,'low',la,lo); g.mid[i]=sampleGrid(fallback,'mid',la,lo); g.high[i]=sampleGrid(fallback,'high',la,lo); } });
+  return g;
+}
 async function load(){
-  const id = ++state.reqId; updateTimeline();
+  const id = ++state.reqId, alive = () => id===state.reqId; updateTimeline();
   const c = map.getCenter(), ev = eventFor(c.lat, c.lng);
   if(!ev){ setStatus('אין שקיעה או זריחה ביום הזה כאן'); return; }
-  const label = state.mode==='sunset'?'שקיעה':'זריחה';
-  setStatus(`${label} <b>${fmtTime(ev.time)}</b> · טוען תחזית…`, true);
-
-  // area = viewport ∪ viewport shifted toward the sun (that's where the light comes from)
-  const b = map.getBounds().pad(0.08);
-  const corners = [[b.getSouth(),b.getWest()],[b.getSouth(),b.getEast()],[b.getNorth(),b.getWest()],[b.getNorth(),b.getEast()]];
-  const all = corners.concat(corners.map(([la,lo])=>offset(la,lo,ev.az,PATH_KM*0.85)));
-  let s=Math.min(...all.map(p=>p[0])), n=Math.max(...all.map(p=>p[0])), w=Math.min(...all.map(p=>p[1])), e=Math.max(...all.map(p=>p[1]));
-  s=Math.max(s,-85); n=Math.min(n,85);
-  const steps=[0.25,0.35,0.5,0.75,1,1.5,2];
-  const step=steps.find(st=>((Math.floor(n/st)-Math.floor(s/st)+2)*(Math.floor(e/st)-Math.floor(w/st)+2))<=MAX_POINTS) || 3;
-  const lat0=Math.floor(s/step)*step, lon0=Math.floor(w/step)*step;
-  const nLat=Math.floor(n/step)-Math.floor(s/step)+2, nLon=Math.floor(e/step)-Math.floor(w/step)+2;
-  const hourF=ev.time.getTime()/3600000;
-
-  const pts=[], missing=[];
-  for(let i=0;i<nLat;i++) for(let k=0;k<nLon;k++){
-    const la=+(lat0+i*step).toFixed(3), lo=+(lon0+k*step).toFixed(3), key=la+','+lo;
-    pts.push(key); if(!cache.has(key)) missing.push([la,lo,key]);
-  }
+  const label = state.mode==='sunset'?'שקיעה':'זריחה', done = `${label} <b>${fmtTime(ev.time)}</b> · השמש ${state.mode==='sunset'?'שוקעת':'זורחת'} ב${compass(ev.az)}`;
+  const hourF = ev.time.getTime()/3600000;
+  // near grid: the screen, fine. far grid: screen + the stretch toward the sun the light crosses, coarse (≥1°)
+  const b = map.getBounds().pad(0.08), clamp = v => Math.max(-85, Math.min(85, v));
+  const near=[clamp(b.getSouth()), b.getWest(), clamp(b.getNorth()), b.getEast()];
+  const corners=[[near[0],near[1]],[near[0],near[3]],[near[2],near[1]],[near[2],near[3]]], all=corners.concat(corners.map(([la,lo])=>offset(la,lo,ev.az,PATH_KM*0.85)));
+  const far=[clamp(Math.min(...all.map(p=>p[0]))), Math.min(...all.map(p=>p[1])), clamp(Math.max(...all.map(p=>p[0]))), Math.max(...all.map(p=>p[1]))];
+  const N = lattice(near, stepFor(near, NEAR_MAX)), G = lattice(far, stepFor(far, FAR_MAX, Math.max(1, N.step)));
+  const need = g => g.keys.filter(k=>!fresh(k)).map(keyPt);
+  const show = (nearG, farG) => { state.F={near:nearG, far:farG, az:ev.az, time:ev.time}; render(); updatePoint(); };
   try{
-    for(let i=0;i<missing.length;i+=100){ await fetchChunk(missing.slice(i,i+100)); if(id!==state.reqId) return; }
+    if(need(G).length || need(N).length) setStatus(`${label} <b>${fmtTime(ev.time)}</b> · טוען תחזית…`, true);
+    await ensure(need(G), alive); if(!alive()) return;
+    fill(G, hourF);
+    if(need(N).length){ show(fill(N, hourF, G), G); await ensure(need(N), alive); if(!alive()) return; } // coarse preview first
+    show(fill(N, hourF, G), G); setStatus(done);
   }catch(err){
     console.error('forecast load failed', err);
-    if(id!==state.reqId) return;
+    if(!alive()) return;
     setStatus(`${label} <b>${fmtTime(ev.time)}</b>`);
-    if(err.rate){ toast('שירות התחזית מגביל בקשות לדקה. מנסה שוב בעוד דקה…'); setTimeout(()=>{ if(id===state.reqId) load(); }, 61000); }
+    if(err.hour) toast('הגענו למכסת הבקשות לשעה הזו. נסו שוב מאוחר יותר.');
     else toast('לא הצלחנו לטעון את תחזית העננים.', load);
-    return;
   }
-  if(id!==state.reqId) return;
-  const N=nLat*nLon, low=new Float32Array(N), mid=new Float32Array(N), high=new Float32Array(N);
-  pts.forEach((key,i)=>{ const r=cache.get(key); if(!r) return;
-    low[i]=at(r,'low',hourF); mid[i]=at(r,'mid',hourF); high[i]=at(r,'high',hourF); });
-  state.F={lat0,lon0,step,nLat,nLon,low,mid,high,az:ev.az,time:ev.time};
-  setStatus(`${label} <b>${fmtTime(ev.time)}</b> · השמש ${state.mode==='sunset'?'שוקעת':'זורחת'} ב${compass(ev.az)}`);
-  render(); updatePoint();
 }
 
 /* ---------- sampling & red-sky model ---------- */
-function sample(arr, lat, lon){
-  const F=state.F; let y=(lat-F.lat0)/F.step, x=(lon-F.lon0)/F.step;
-  y=Math.max(0,Math.min(F.nLat-1.001,y)); x=Math.max(0,Math.min(F.nLon-1.001,x));
-  const i=Math.floor(y), k=Math.floor(x), fy=y-i, fx=x-k, W=F.nLon;
+function sampleGrid(g, layer, lat, lon){
+  let y=(lat-g.lat0)/g.step, x=(lon-g.lon0)/g.step;
+  y=Math.max(0,Math.min(g.nLat-1.001,y)); x=Math.max(0,Math.min(g.nLon-1.001,x));
+  const i=Math.floor(y), k=Math.floor(x), fy=y-i, fx=x-k, W=g.nLon, arr=g[layer];
   const a=arr[i*W+k], b=arr[i*W+k+1], c=arr[(i+1)*W+k], d=arr[(i+1)*W+k+1];
   return (a*(1-fx)+b*fx)*(1-fy)+(c*(1-fx)+d*fx)*fy;
 }
+const inGrid = (g, lat, lon) => lat>=g.lat0 && lon>=g.lon0 && lat<=g.lat0+(g.nLat-1)*g.step && lon<=g.lon0+(g.nLon-1)*g.step;
+const sample = (layer, lat, lon) => sampleGrid(state.F.near, layer, lat, lon);
+const sampleAny = (layer, lat, lon) => { const F=state.F; return sampleGrid(inGrid(F.near,lat,lon)?F.near:F.far, layer, lat, lon); };
 // Open-Meteo layers: low = 0–3 km, mid = 3–8 km, high = above 8 km.
 // Clouds that get painted: the mid layer (geometry checked at 3 and 5 km) and the high layer (at 8 km).
 // Sunlight reaching a cloud at height h (km) during the glow: the lighting ray leaves the cloud heading
@@ -491,22 +547,25 @@ function scoreFrom(low, mid, high, cloudAt){
 }
 function redScore(lat, lon){
   const F=state.F, dLat=Math.cos(F.az*D2R)/111.32, dLon=Math.sin(F.az*D2R)/(111.32*Math.cos(lat*D2R));
-  return scoreFrom(sample(F.low,lat,lon), sample(F.mid,lat,lon), sample(F.high,lat,lon), (layer,x)=>sample(F[layer], lat+x*dLat, lon+x*dLon));
+  return scoreFrom(sample('low',lat,lon), sample('mid',lat,lon), sample('high',lat,lon), (layer,x)=>sampleAny(layer, lat+x*dLat, lon+x*dLon));
 }
 
 /* ---------- point refinement: dense forecast along the chosen point's sunrise and sunset directions ----------
    One fetch covers every sunrise and sunset in the timeline: the sun's azimuth drifts well under 1° over 5 days,
    so each direction's line is laid out once (for the middle day) and reused for all days. */
-const FINE = 0.05, LINE_STEP = 15, MODES = ['sunrise','sunset'];
+const FINE = 0.05, MODES = ['sunrise','sunset'];
+// distances along the sun line: every 10 km up to 150 km, then every 30 km (far clouds matter, but not at fine detail)
+const LINE_X = [...Array.from({length:16},(_,i)=>i*10), ...Array.from({length:15},(_,i)=>180+i*30)];
 const snap = v => +(Math.round(v/FINE)*FINE).toFixed(3);
 async function fetchFine(p){
   const K=(a,b)=>a+','+b, lines={};
   for(const m of MODES){ const ev=eventFor(p.lat,p.lng,2,m); if(!ev) continue; lines[m]=[];
-    for(let x=0;x<=PATH_KM;x+=LINE_STEP){ const [la,lo]=offset(p.lat,p.lng,ev.az,x); lines[m].push(K(snap(la),snap(lo))); } }
+    for(const x of LINE_X){ const [la,lo]=offset(p.lat,p.lng,ev.az,x), sn=x<=150?snap:v=>+(Math.round(v/0.25)*0.25).toFixed(3); lines[m].push(K(sn(la),sn(lo))); } }
   const la0=+(Math.floor(p.lat/FINE)*FINE).toFixed(3), lo0=+(Math.floor(p.lng/FINE)*FINE).toFixed(3), la1=+(la0+FINE).toFixed(3), lo1=+(lo0+FINE).toFixed(3);
   const box=[K(la0,lo0),K(la0,lo1),K(la1,lo0),K(la1,lo1)];
-  const keys=[...new Set([...Object.values(lines).flat(),...box])], missing=keys.filter(k=>!cache.has(k)).map(k=>{ const [a,b]=k.split(',').map(Number); return [a,b,k]; });
-  for(let i=0;i<missing.length;i+=100) await fetchChunk(missing.slice(i,i+100));
+  const keys=[...new Set([...Object.values(lines).flat(),...box])];
+  await ensure(keys.map(keyPt));
+  if(keys.some(k=>!cache.has(k))) throw new Error('missing');
   return {p, n:keys.length, lines, box, fy:(p.lat-la0)/FINE, fx:(p.lng-lo0)/FINE, memo:new Map()};
 }
 function scoreOf(f, day, mode){
@@ -516,7 +575,7 @@ function scoreOf(f, day, mode){
   const hF=ev.time.getTime()/3600000, v=(k,l)=>at(cache.get(k),l,hF), b=f.box, fx=f.fx, fy=f.fy;
   const bil=l=>(v(b[0],l)*(1-fx)+v(b[1],l)*fx)*(1-fy)+(v(b[2],l)*(1-fx)+v(b[3],l)*fx)*fy;
   const line={}; for(const l of ['low','mid','high']) line[l]=f.lines[mode].map(k=>v(k,l));
-  const along=(arr,x)=>{ const i=x/LINE_STEP, k=Math.min(arr.length-2,Math.floor(i)), t=Math.min(1,i-k); return arr[k]+(arr[k+1]-arr[k])*t; };
+  const along=(arr,x)=>{ let k=0; while(k<LINE_X.length-2 && LINE_X[k+1]<x) k++; const t=Math.min(1,Math.max(0,(x-LINE_X[k])/(LINE_X[k+1]-LINE_X[k]))); return arr[k]+(arr[k+1]-arr[k])*t; };
   const r=scoreFrom(bil('low'), bil('mid'), bil('high'), (layer,x)=>along(line[layer], x));
   r.time=ev.time; f.memo.set(id,r); return r;
 }
@@ -666,8 +725,8 @@ function paint(fn, stops){
 }
 function render(){
   [cloudOverlay,redOverlay].forEach(l=>l&&map.removeLayer(l)); cloudOverlay=redOverlay=null;
-  if(!state.F) return; const F=state.F;
-  if(state.show.clouds) cloudOverlay=paint((la,lo)=>{ const l=sample(F.low,la,lo), m=sample(F.mid,la,lo), h=sample(F.high,la,lo); return 1-(1-l)*(1-m)*(1-h); }, cloudStops());
+  if(!state.F) return;
+  if(state.show.clouds) cloudOverlay=paint((la,lo)=>{ const l=sample('low',la,lo), m=sample('mid',la,lo), h=sample('high',la,lo); return 1-(1-l)*(1-m)*(1-h); }, cloudStops());
   if(state.show.red) redOverlay=paint((la,lo)=>redScore(la,lo).s, RED_STOPS);
 }
 
@@ -869,7 +928,7 @@ $('installSheet').onclick = e=>{ if(e.target.id==='installSheet') $('installShee
 /* ---------- go ---------- */
 let mvT; map.on('moveend', ()=>{ clearTimeout(mvT); mvT=setTimeout(load, 350); });
 map.on('zoomstart', ()=>{ [redOverlay,cloudOverlay].forEach(o=>o&&o.setOpacity(0.35)); });
-load().then(()=>{ if(state.favs.length) refreshFavs(); });
+idb.loadAll().then(es=>es.forEach(([k,v])=>cache.set(k,v))).finally(()=>load().then(()=>{ if(state.favs.length) refreshFavs(); }));
 </script>
 </body>
 </html>
