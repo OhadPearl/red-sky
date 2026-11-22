@@ -44,33 +44,44 @@ body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--f-body);-webkit-f
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-/* top: when */
-.top{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:0;right:0;z-index:1000;display:flex;flex-direction:column;align-items:center;gap:6px;
-  padding-left:max(64px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));pointer-events:none}
-.when{pointer-events:auto;display:flex;align-items:center;gap:4px;padding:4px;border-radius:999px;max-width:100%;overflow-x:auto;scrollbar-width:none}
-.when::-webkit-scrollbar{display:none}
-.seg{display:flex;gap:2px}
-.seg button{padding:7px 13px;border-radius:999px;white-space:nowrap;font-weight:500;font-size:14px;color:var(--muted);transition:background .15s,color .15s}
-.seg button[aria-pressed="true"]{background:var(--sel);color:var(--sel-fg)}
-.sep{width:1px;height:20px;background:var(--line);margin:0 4px;flex:none}
+/* top: status only */
+.top{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:0;right:0;z-index:1000;display:flex;justify-content:center;padding:0 16px;pointer-events:none}
 .status{pointer-events:auto;font-size:13px;color:var(--muted);padding:3px 12px;border-radius:999px;display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums}
 .status b{color:var(--fg);font-weight:500}
 .spin{width:11px;height:11px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--accent);animation:sp .8s linear infinite;flex:none}
 @keyframes sp{to{transform:rotate(360deg)}}
 
-/* side buttons */
-.side{position:fixed;left:max(12px,env(safe-area-inset-left,0px));top:calc(env(safe-area-inset-top,0px) + 12px);z-index:1100;display:flex;flex-direction:column;gap:8px}
+/* bottom timeline: one chip per day, sunrise at its start edge and sunset at its end edge; dragged sideways */
+:root{--tl-h:66px;--tl-b:calc(env(safe-area-inset-bottom,0px) + 10px)}
+.tl{position:fixed;left:0;right:0;bottom:var(--tl-b);z-index:1000;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+  -webkit-mask:linear-gradient(to left,transparent 0,#000 16px,#000 calc(100% - 16px),transparent 100%);mask:linear-gradient(to left,transparent 0,#000 16px,#000 calc(100% - 16px),transparent 100%);
+  cursor:grab;touch-action:pan-x;user-select:none;-webkit-user-select:none}
+.tl::-webkit-scrollbar{display:none}
+.tl.drag{cursor:grabbing}
+.track{display:flex;gap:8px;padding:0 16px;width:max-content}
+.day{display:flex;align-items:center;gap:4px;padding:5px;border-radius:18px;height:var(--tl-h);box-sizing:border-box}
+.day .dn{min-width:64px;text-align:center;font:500 14px/1.15 var(--f-display);padding:0 4px}
+.day .dn small{display:block;font:400 11.5px/1.2 var(--f-body);color:var(--muted);margin-top:2px}
+.ev{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:58px;height:100%;border-radius:13px;color:var(--muted);transition:background .15s,color .15s}
+.ev svg{width:26px;height:26px}
+.ev .t{font-size:11.5px;font-variant-numeric:tabular-nums;line-height:1}
+.ev.past{opacity:.45}
+.ev[aria-pressed="true"]{background:var(--sel);color:var(--sel-fg);opacity:1}
+.ev[aria-pressed="true"] .t{color:inherit}
+
+/* side buttons: bottom right, above the timeline */
+.side{position:fixed;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(var(--tl-b) + var(--tl-h) + 12px);z-index:1100;display:flex;flex-direction:column;gap:8px}
 .side button{width:42px;height:42px;border-radius:13px;display:grid;place-items:center;color:var(--fg);position:relative}
 .side button[aria-expanded="true"]{background:var(--sel);color:var(--sel-fg)}
 .side svg{width:21px;height:21px}
-.badge{position:absolute;top:-6px;right:-8px;min-width:20px;padding:1px 5px;border-radius:999px;font:700 11px/16px var(--f-display);color:#fff;background:var(--accent);box-shadow:0 1px 4px rgba(0,0,0,.25);font-variant-numeric:tabular-nums}
+.badge{position:absolute;top:-6px;left:-8px;min-width:20px;padding:1px 5px;border-radius:999px;font:700 11px/16px var(--f-display);color:#fff;background:var(--accent);box-shadow:0 1px 4px rgba(0,0,0,.25);font-variant-numeric:tabular-nums}
 
 /* panels */
-.panel{position:fixed;left:calc(max(12px,env(safe-area-inset-left,0px)) + 52px);top:calc(env(safe-area-inset-top,0px) + 12px);z-index:1100;
-  width:min(290px,calc(100vw - 84px));border-radius:18px;padding:14px;box-sizing:border-box;max-height:calc(100% - 40px);overflow:auto}
+.panel{position:fixed;right:calc(max(12px,env(safe-area-inset-right,0px)) + 52px);bottom:calc(var(--tl-b) + var(--tl-h) + 12px);z-index:1100;
+  width:min(290px,calc(100vw - 84px));border-radius:18px;padding:14px;box-sizing:border-box;max-height:calc(100% - var(--tl-h) - 90px);overflow:auto}
 .panel h3{margin:0 0 8px;font:500 12px/1 var(--f-body);letter-spacing:.06em;color:var(--muted)}
 .panel h3:not(:first-child){margin-top:14px}
-.maps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.maps{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
 .maps button{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
 .maps .th{width:100%;aspect-ratio:1;border-radius:10px;background-size:cover;background-position:center;border:2px solid transparent;box-sizing:border-box}
 .maps button[aria-pressed="true"]{color:var(--fg);font-weight:500}
@@ -97,10 +108,8 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .facing{font-size:13.5px;text-align:center;margin-top:2px}
 .empty{font-size:14px;color:var(--muted)}
 
-/* legend */
-.legend{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 22px);z-index:1000;display:flex;align-items:center;gap:8px;padding:5px 11px;border-radius:999px;font-size:12px;color:var(--muted)}
-.ramp{width:90px;height:7px;border-radius:4px}
-
+/* sun direction overlay (screen space) */
+#sunsvg{position:fixed;inset:0;width:100%;height:100%;z-index:500;pointer-events:none}
 /* info sheet */
 .sheet{position:fixed;inset:0;z-index:2000;display:grid;place-items:center;background:rgba(10,12,20,.35);padding:16px}
 .sheet .box{max-width:440px;border-radius:20px;padding:22px 22px 18px;background:var(--panel-solid);box-shadow:var(--shadow)}
@@ -109,32 +118,21 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .sheet .small{font-size:12.5px;color:var(--muted)}
 .sheet .ok{margin-top:6px;padding:9px 18px;border-radius:999px;background:var(--sel);color:var(--sel-fg);font-weight:500}
 
-.toast{position:fixed;top:calc(env(safe-area-inset-top,0px) + 100px);left:50%;transform:translateX(-50%);z-index:1500;padding:8px 14px;border-radius:12px;font-size:14px;max-width:calc(100% - 32px)}
+.toast{position:fixed;top:calc(env(safe-area-inset-top,0px) + 56px);left:50%;transform:translateX(-50%);z-index:1500;padding:8px 14px;border-radius:12px;font-size:14px;max-width:calc(100% - 32px)}
 .toast button{color:var(--accent);font-weight:700;margin-inline-start:8px}
 
 .leaflet-control-attribution{font-size:10px;background:var(--panel)!important;color:var(--muted)}
 .leaflet-control-attribution a{color:var(--muted)}
 .pin{width:18px;height:18px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);box-sizing:border-box}
-.sunmark{width:26px;height:26px;border-radius:50%;background:radial-gradient(circle,#ffd27a 0 40%,rgba(255,170,80,0) 72%);display:grid;place-items:center}
-.sunmark::after{content:"";width:10px;height:10px;border-radius:50%;background:#ffb547;box-shadow:0 0 0 2px #fff}
-@media (max-width:480px){ .seg button{padding:7px 10px} }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
 <div id="map" aria-label="מפה"></div>
 
-<div class="top">
-  <div class="when glass" role="toolbar" aria-label="מתי">
-    <div class="seg" id="modeSeg">
-      <button id="m-sunset" data-mode="sunset" aria-pressed="true">שקיעה</button>
-      <button id="m-sunrise" data-mode="sunrise" aria-pressed="false">זריחה</button>
-    </div>
-    <span class="sep"></span>
-    <div class="seg" id="daySeg"></div>
-  </div>
-  <div class="status glass" id="status"><span class="spin"></span>טוען תחזית…</div>
-</div>
+<svg id="sunsvg" aria-hidden="true"></svg>
+<div class="top"><div class="status glass" id="status"><span class="spin"></span>טוען תחזית…</div></div>
+<div class="tl" id="tl" role="toolbar" aria-label="ציר זמן: זריחות ושקיעות"><div class="track" id="track"></div></div>
 
 <div class="side">
   <button class="glass" id="layersBtn" aria-expanded="false" aria-controls="layersPanel" title="שכבות" aria-label="שכבות">
@@ -162,8 +160,6 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 <div class="panel glass" id="pointPanel" hidden></div>
 
-<div class="legend glass" id="legend"></div>
-
 <div class="sheet" id="sheet" hidden>
   <div class="box">
     <h2>איך מזהים שמיים אדומים</h2>
@@ -188,35 +184,32 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 <script>
 "use strict";
 const D2R = Math.PI/180, R_EARTH = 6371, R_EFF = R_EARTH*1.15; // refraction ~ k=0.13
-const MAX_POINTS = 200, PATH_KM = 600, PATH_STEP = 25, VIEW_R = 35;
+const MAX_POINTS = 200, PATH_KM = 600, PATH_STEP = 25, DAYS = 5;
 
 const store = { get(k,d){ try{ const v=localStorage.getItem('redsky.'+k); return v==null?d:JSON.parse(v); }catch(e){ return d; } },
                 set(k,v){ try{ localStorage.setItem('redsky.'+k, JSON.stringify(v)); }catch(e){} } };
 const state = { mode:'sunset', day:0, point:null, F:null, view:null, reqId:0,
-  basemap: store.get('basemap','clean'), show: Object.assign({red:true, clouds:false, view:true}, store.get('show',{})) };
+  basemap: store.get('basemap','streets'), show: Object.assign({red:true, clouds:false, view:true}, store.get('show',{})) };
 const $ = id => document.getElementById(id);
 const isDark = () => matchMedia('(prefers-color-scheme: dark)').matches;
 
 /* ---------- map & basemaps ---------- */
-const map = L.map('map', {zoomControl:false, minZoom:5, maxZoom:17}).setView([31.6, 34.95], 8);
-map.attributionControl.setPrefix(false);
+const map = L.map('map', {zoomControl:false, minZoom:5, maxZoom:18, attributionControl:false}).setView([31.6, 34.95], 8);
+L.control.attribution({position:'topleft', prefix:false}).addTo(map);
 map.createPane('labels'); map.getPane('labels').style.zIndex=450; map.getPane('labels').style.pointerEvents='none';
 const esri = s => `https://server.arcgisonline.com/ArcGIS/rest/services/${s}/MapServer/tile/{z}/{y}/{x}`;
 const BASEMAPS = {
-  clean: { name:'נקייה', thumb:()=>esri(isDark()?'Canvas/World_Dark_Gray_Base':'Canvas/World_Light_Gray_Base').replace('{z}/{y}/{x}','7/52/76'),
-    layers:()=>[ L.tileLayer(esri(isDark()?'Canvas/World_Dark_Gray_Base':'Canvas/World_Light_Gray_Base'),{maxZoom:17,maxNativeZoom:16,attribution:'Esri, HERE, Garmin, © OpenStreetMap'}),
-                 L.tileLayer(esri(isDark()?'Canvas/World_Dark_Gray_Reference':'Canvas/World_Light_Gray_Reference'),{maxZoom:17,maxNativeZoom:16,pane:'labels'}) ] },
-  topo: { name:'טופוגרפית', thumb:()=>'https://a.tile.opentopomap.org/9/306/208.png',
-    layers:()=>[ L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{subdomains:'abc',maxZoom:17,attribution:'© OpenStreetMap, SRTM · © OpenTopoMap (CC-BY-SA)'}) ] },
-  satellite: { name:'לוויין', thumb:()=>esri('World_Imagery').replace('{z}/{y}/{x}','9/208/306'),
-    layers:()=>[ L.tileLayer(esri('World_Imagery'),{maxZoom:17,attribution:'Esri, Maxar, Earthstar Geographics'}),
-                 L.tileLayer(esri('Reference/World_Boundaries_and_Places'),{maxZoom:17,pane:'labels'}) ] },
   streets: { name:'רחובות', thumb:()=>'https://tile.openstreetmap.org/12/2450/1665.png',
-    layers:()=>[ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:17,attribution:'© OpenStreetMap'}) ] },
+    layers:()=>[ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OpenStreetMap'}) ] },
+  topo: { name:'טופוגרפית', thumb:()=>'https://a.tile.opentopomap.org/9/306/208.png',
+    layers:()=>[ L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{subdomains:'abc',maxZoom:18,maxNativeZoom:17,attribution:'© OpenStreetMap, SRTM · © OpenTopoMap (CC-BY-SA)'}) ] },
+  satellite: { name:'לוויין', thumb:()=>esri('World_Imagery').replace('{z}/{y}/{x}','9/208/306'),
+    layers:()=>[ L.tileLayer(esri('World_Imagery'),{maxZoom:18,attribution:'Esri, Maxar, Earthstar Geographics'}),
+                 L.tileLayer(esri('Reference/World_Boundaries_and_Places'),{maxZoom:18,pane:'labels'}) ] },
 };
 let baseLayers = [];
 function setBase(){
-  if(!BASEMAPS[state.basemap]) state.basemap='clean';
+  if(!BASEMAPS[state.basemap]) state.basemap='streets';
   baseLayers.forEach(l=>map.removeLayer(l));
   baseLayers = BASEMAPS[state.basemap].layers(); baseLayers.forEach(l=>l.addTo(map)); baseLayers[0].bringToBack();
 }
@@ -248,7 +241,6 @@ buildToggles();
 $('toggles').addEventListener('click', e=>{ const b=e.target.closest('.tog'); if(!b) return;
   const k=b.dataset.k; state.show[k]=!state.show[k]; b.setAttribute('aria-checked',String(state.show[k])); store.set('show',state.show);
   if(k==='view'){ renderView(); if(state.show.view && !state.point) toast('הקישו על המפה כדי לבחור נקודת תצפית'); } else render();
-  legend();
 });
 
 /* ---------- panels ---------- */
@@ -266,9 +258,9 @@ $('sheetOk').onclick = ()=>{ $('sheet').hidden=true; };
 $('sheet').onclick = e=>{ if(e.target.id==='sheet') $('sheet').hidden=true; };
 
 /* ---------- time & sun ---------- */
-function eventFor(lat, lon){
-  const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()+state.day);
-  const t = SunCalc.getTimes(d, lat, lon)[state.mode];
+function eventFor(lat, lon, day=state.day, mode=state.mode){
+  const d = new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()+day);
+  const t = SunCalc.getTimes(d, lat, lon)[mode];
   if(!t || isNaN(t)) return null;
   const p = SunCalc.getPosition(t, lat, lon);
   return { time:t, az:((p.azimuth/D2R)+180+360)%360 };
@@ -277,20 +269,53 @@ const fmtTime = t => t.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digi
 const DIRS = ['צפון','צפון-מזרח','מזרח','דרום-מזרח','דרום','דרום-מערב','מערב','צפון-מערב'];
 const compass = az => DIRS[Math.round(az/45)%8];
 
-/* ---------- top controls ---------- */
-(function buildDays(){
-  const seg=$('daySeg');
-  for(let i=0;i<4;i++){
+/* ---------- timeline (bottom): today sunrise, today sunset, tomorrow sunrise… ---------- */
+const sunIcon = up => `<svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M3 20h22"/><path d="M8.5 20a5.5 5.5 0 0 1 11 0" fill="#ffb547" fill-opacity=".35"/>
+  <path d="M14 10.5v-1.5M7 13l-1-1M21 13l1-1"/>${up?'<path d="M14 7V2.5M11.8 4.6 14 2.5l2.2 2.1"/>':'<path d="M14 2.5V7M11.8 4.9 14 7l2.2-2.1"/>'}
+  <path d="M7 24h14" opacity=".45"/></svg>`;
+function buildTimeline(){
+  const tr=$('track'); tr.innerHTML='';
+  for(let i=0;i<DAYS;i++){
     const d=new Date(); d.setDate(d.getDate()+i);
-    const b=document.createElement('button'); b.id='d-'+i; b.dataset.day=i;
-    b.textContent = i===0?'היום':i===1?'מחר':d.toLocaleDateString('he-IL',{weekday:'short'});
-    b.setAttribute('aria-pressed', String(i===state.day)); seg.appendChild(b);
+    const name = i===0?'היום':i===1?'מחר':d.toLocaleDateString('he-IL',{weekday:'long'});
+    const day=document.createElement('div'); day.className='day glass';
+    day.innerHTML=`<button class="ev" data-day="${i}" data-mode="sunrise" aria-label="זריחה, ${name}">${sunIcon(true)}<span class="t"></span></button>
+      <div class="dn">${name}<small>${d.getDate()}.${d.getMonth()+1}</small></div>
+      <button class="ev" data-day="${i}" data-mode="sunset" aria-label="שקיעה, ${name}">${sunIcon(false)}<span class="t"></span></button>`;
+    tr.appendChild(day);
   }
+}
+function updateTimeline(){
+  const c=map.getCenter(), now=Date.now();
+  for(const b of $('track').querySelectorAll('.ev')){
+    const ev=eventFor(c.lat,c.lng,+b.dataset.day,b.dataset.mode);
+    b.querySelector('.t').textContent = ev?fmtTime(ev.time):'–';
+    b.classList.toggle('past', !!ev && ev.time.getTime()<now-20*60000);
+    b.setAttribute('aria-pressed', String(+b.dataset.day===state.day && b.dataset.mode===state.mode));
+  }
+}
+function pickNext(){ // start on the next sunrise/sunset still to come (or within the last 20 minutes)
+  const c=map.getCenter(), now=Date.now()-20*60000;
+  for(let d=0; d<DAYS; d++) for(const m of ['sunrise','sunset']){ const ev=eventFor(c.lat,c.lng,d,m); if(ev && ev.time.getTime()>now){ state.day=d; state.mode=m; return; } }
+}
+function scrollToSelected(smooth){
+  const b=$('track').querySelector('.ev[aria-pressed="true"]'); if(!b) return;
+  const tl=$('tl'), br=b.closest('.day').getBoundingClientRect(), tr=tl.getBoundingClientRect();
+  tl.scrollBy({left:(br.left+br.width/2)-(tr.left+tr.width/2), behavior:smooth?'smooth':'auto'});
+}
+buildTimeline(); pickNext(); updateTimeline(); requestAnimationFrame(()=>scrollToSelected(false));
+(function dragScroll(){ // touch scrolls natively; a mouse drags the strip, and the wheel scrolls it sideways
+  const tl=$('tl'); let x0=null, s0=0, moved=false;
+  tl.addEventListener('pointerdown', e=>{ if(e.pointerType!=='mouse') return; x0=e.clientX; s0=tl.scrollLeft; moved=false; });
+  addEventListener('pointermove', e=>{ if(x0==null) return; const dx=e.clientX-x0; if(Math.abs(dx)>4){ moved=true; tl.classList.add('drag'); } if(moved) tl.scrollLeft=s0-dx; });
+  addEventListener('pointerup', ()=>{ x0=null; tl.classList.remove('drag'); });
+  tl.addEventListener('click', e=>{ if(moved){ e.stopPropagation(); e.preventDefault(); moved=false; } }, true);
+  tl.addEventListener('wheel', e=>{ if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){ tl.scrollLeft+=(document.dir==='rtl'?-1:1)*e.deltaY; e.preventDefault(); } }, {passive:false});
 })();
-$('daySeg').addEventListener('click', e=>{ const b=e.target.closest('button'); if(!b) return;
-  state.day=+b.dataset.day; [...$('daySeg').children].forEach(x=>x.setAttribute('aria-pressed', String(x===b))); if(state.point){ computeView(); refinePoint(); } load(); });
-$('modeSeg').addEventListener('click', e=>{ const b=e.target.closest('button'); if(!b) return;
-  state.mode=b.dataset.mode; [...$('modeSeg').children].forEach(x=>x.setAttribute('aria-pressed', String(x===b))); if(state.point){ computeView(); refinePoint(); } load(); });
+$('track').addEventListener('click', e=>{ const b=e.target.closest('.ev'); if(!b) return;
+  state.day=+b.dataset.day; state.mode=b.dataset.mode; updateTimeline(); scrollToSelected(true);
+  if(state.point){ computeView(); refinePoint(); } load(); });
 $('locate').onclick = ()=>{
   if(!navigator.geolocation) return toast('הדפדפן לא מאפשר איתור מיקום');
   navigator.geolocation.getCurrentPosition(p=>{ const ll=L.latLng(p.coords.latitude,p.coords.longitude); map.setView(ll, Math.max(map.getZoom(),10)); selectPoint(ll); },
@@ -306,14 +331,10 @@ function setStatus(html, loading){ $('status').innerHTML=(loading?'<span class="
 
 /* ---------- legend & colors ---------- */
 const RED_STOPS = [[0,[255,175,90,0]],[0.12,[255,175,90,40]],[0.35,[255,128,60,135]],[0.6,[236,60,50,185]],[0.85,[190,25,75,210]],[1,[140,20,95,225]]];
-function cloudStops(){ const white = state.basemap==='satellite' || (state.basemap==='clean' && isDark());
+function cloudStops(){ const white = state.basemap==='satellite';
   return white ? [[0,[235,240,250,0]],[0.15,[235,240,250,30]],[1,[245,248,255,210]]]
                : [[0,[60,72,96,0]],[0.15,[60,72,96,25]],[1,[52,62,86,190]]]; }
 function stopsCss(stops){ return 'linear-gradient(to left,'+stops.map(([p,c])=>`rgba(${c[0]},${c[1]},${c[2]},${Math.max(c[3],30)/255}) ${p*100}%`).join(',')+')'; }
-function legend(){
-  const el=$('legend'); el.hidden = !state.show.red;
-  el.innerHTML=`<span>חלש</span><span class="ramp" style="background:${stopsCss(RED_STOPS)}"></span><span>מרהיב</span>`;
-}
 function ramp(stops, v){
   if(v<=stops[0][0]) return stops[0][1];
   for(let i=1;i<stops.length;i++){ if(v<=stops[i][0]){ const [p0,c0]=stops[i-1],[p1,c1]=stops[i], f=(v-p0)/(p1-p0);
@@ -344,7 +365,7 @@ function at(rec, layer, hourF){
   return a[i]+(a[i+1]-a[i])*(x-i);
 }
 async function load(){
-  const id = ++state.reqId;
+  const id = ++state.reqId; updateTimeline();
   const c = map.getCenter(), ev = eventFor(c.lat, c.lng);
   if(!ev){ setStatus('אין שקיעה או זריחה ביום הזה כאן'); return; }
   const label = state.mode==='sunset'?'שקיעה':'זריחה';
@@ -458,7 +479,7 @@ function fineScore(){
 }
 
 /* ---------- rendering ---------- */
-let cloudOverlay=null, redOverlay=null, viewOverlay=null, pinMarker=null, sunLine=null, sunMarker=null;
+let cloudOverlay=null, redOverlay=null, viewOverlay=null, pinMarker=null;
 function paint(fn, stops){
   const size=map.getSize(), cols=Math.min(140,Math.max(60,Math.round(size.x/9))), rows=Math.max(20,Math.round(cols*size.y/size.x));
   const cv=document.createElement('canvas'); cv.width=cols; cv.height=rows;
@@ -487,20 +508,41 @@ function selectPoint(ll){
   state.view=null; renderView(); updatePoint(); computeView(); refinePoint();
 }
 map.on('click', e=>{
-  if(!$('layersPanel').hidden){ openPanel('layers'); return; } // first tap just closes the layers panel
+  // a tap on the map while a panel is open only closes it; the point panel reopens from its button
+  if(!$('layersPanel').hidden){ openPanel('layers'); return; }
+  if(!$('pointPanel').hidden){ openPanel('point'); return; }
   selectPoint(e.latlng);
 });
 function clearPoint(){
   state.point=null; state.view=null;
-  [pinMarker,sunLine,sunMarker,viewOverlay].forEach(l=>l&&map.removeLayer(l)); pinMarker=sunLine=sunMarker=viewOverlay=null; updatePoint();
+  [pinMarker,viewOverlay].forEach(l=>l&&map.removeLayer(l)); pinMarker=viewOverlay=null; updatePoint();
 }
 function drawSunLine(){
-  [sunLine,sunMarker].forEach(l=>l&&map.removeLayer(l)); sunLine=sunMarker=null;
+  const svg=$('sunsvg'); svg.innerHTML='';
   if(!state.point) return; const ev=eventFor(state.point.lat,state.point.lng); if(!ev) return;
-  const end=offset(state.point.lat,state.point.lng,ev.az,60);
-  sunLine=L.polyline([state.point,end],{color:'#ff9a3c',weight:2.5,dashArray:'2 7',lineCap:'round',interactive:false}).addTo(map);
-  sunMarker=L.marker(end,{icon:L.divIcon({className:'',html:'<div class="sunmark"></div>',iconSize:[26,26],iconAnchor:[13,13]}),interactive:false,keyboard:false}).addTo(map);
+  const W=innerWidth, H=innerHeight, r=$('map').getBoundingClientRect();
+  const P=map.latLngToContainerPoint(state.point), px=P.x+r.left, py=P.y+r.top;
+  const ux=Math.sin(ev.az*D2R), uy=-Math.cos(ev.az*D2R); // Mercator keeps angles, so azimuth maps straight to screen
+  const top=parseFloat(getComputedStyle($('status')).height||0)+40, bot=$('tl').getBoundingClientRect().top-14, M=26;
+  const box=[M, top, W-M, bot]; // usable screen area
+  // slab intersection of the ray P + t·u with the box
+  let t0=0, t1=Infinity;
+  for(const [p,u,lo,hi] of [[px,ux,box[0],box[2]],[py,uy,box[1],box[3]]]){
+    if(Math.abs(u)<1e-9){ if(p<lo||p>hi) return; continue; }
+    let a=(lo-p)/u, b=(hi-p)/u; if(a>b) [a,b]=[b,a]; t0=Math.max(t0,a); t1=Math.min(t1,b);
+  }
+  if(!(t1>t0+40)) return;
+  const S=16, ex=px+ux*(t1-S), ey=py+uy*(t1-S);           // sun icon centre, just inside the edge
+  const ax=px+ux*(t1-S-22), ay=py+uy*(t1-S-22);           // arrow tip
+  const sx=px+ux*t0, sy=py+uy*t0;
+  const ang=Math.atan2(uy,ux)/D2R, up=state.mode==='sunrise';
+  svg.innerHTML=`<defs><radialGradient id="sg"><stop offset="0" stop-color="#ffd27a" stop-opacity=".9"/><stop offset="1" stop-color="#ffaa50" stop-opacity="0"/></radialGradient></defs>
+    <line x1="${sx}" y1="${sy}" x2="${ax-ux*6}" y2="${ay-uy*6}" stroke="#ff9a3c" stroke-width="2.5" stroke-dasharray="2 7" stroke-linecap="round"/>
+    <path d="M-9,-6 L0,0 L-9,6" transform="translate(${ax},${ay}) rotate(${ang})" fill="none" stroke="#ff9a3c" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${ex}" cy="${ey}" r="24" fill="url(#sg)"/>
+    <g transform="translate(${ex-14},${ey-14})" color="#7a3d00"><circle cx="14" cy="14" r="13" fill="#ffc46b" stroke="#fff" stroke-width="2"/>${sunIcon(up).replace('<svg ','<svg width="28" height="28" ')}</g>`;
 }
+map.on('move zoom resize', ()=>drawSunLine()); addEventListener('resize', ()=>drawSunLine());
 function updatePoint(){
   const badge=$('badge'), pan=$('pointPanel'), p=state.point;
   drawSunLine();
@@ -533,7 +575,7 @@ function updatePoint(){
   else html+=roseSvg(v, ev?ev.az:null)+facingText(v);
   pan.innerHTML=html;
 }
-// Compass rose: one wedge per 22.5°, length = share of that direction you can see (up to VIEW_R km)
+// Compass rose: one wedge per 22.5°, length = share of that direction you can see (out to the horizon)
 function roseSvg(v, sunAz){
   const C=85, r0=16, R=64, n=v.sectors.length;
   let s=`<svg class="rose" viewBox="0 0 170 170" role="img" aria-label="כמה רואים לכל כיוון">`;
@@ -556,49 +598,58 @@ function facingText(v){
   const list = top.length ? top.map(([f,i])=>`${DIRS[i]} ${Math.round(f*100)}%`).join(' · ') : 'השטח סביב חסום כמעט לכל הכיוונים';
   const dir=state.mode==='sunset'?'השקיעה':'הזריחה';
   const hz = v.horizonDeg<0.4 ? `האופק לכיוון ${dir} פתוח` : v.horizonDeg<2 ? `האופק לכיוון ${dir} מוגבה מעט (${v.horizonDeg.toFixed(1)}°)` : `רכס חוסם את ${dir} במרחק ${v.horizonKm.toFixed(1)} ק״מ`;
-  return `<div class="facing">${top.length?'צופה בעיקר ל':''}${list}</div><div class="pt-sub" style="text-align:center">${hz} · נראים ${v.pct}% מהשטח עד ${VIEW_R} ק״מ</div>`;
+  return `<div class="facing">${top.length?'צופה בעיקר ל':''}${list}</div><div class="pt-sub" style="text-align:center">${hz} · נראים ${v.pct}% מהשטח עד האופק (${Math.round(v.radius)} ק״מ)</div>`;
 }
 
 /* ---------- terrain & viewshed ---------- */
-const TZ=10, tiles=new Map();
-function tile(x,y){
-  const key=x+'/'+y; if(tiles.has(key)) return tiles.get(key);
+// Radius = distance at which terrain up to TARGET_KM high can still peek over the earth's curve for this observer.
+const TARGET_KM = 0.9, tiles=new Map();
+function tile(z,x,y){
+  const key=z+'/'+x+'/'+y; if(tiles.has(key)) return tiles.get(key);
   const p=new Promise((res,rej)=>{
     const img=new Image(); img.crossOrigin='anonymous';
     img.onload=()=>{ const c=document.createElement('canvas'); c.width=c.height=256; const g=c.getContext('2d'); g.drawImage(img,0,0);
       const d=g.getImageData(0,0,256,256).data, e=new Float32Array(65536);
       for(let i=0;i<65536;i++) e[i]=d[i*4]*256+d[i*4+1]+d[i*4+2]/256-32768; res(e); };
     img.onerror=()=>rej(new Error('tile'));
-    img.src=`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${TZ}/${x}/${y}.png`;
+    img.src=`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
   });
   tiles.set(key,p); p.catch(()=>tiles.delete(key)); return p;
 }
-const worldPx=(lat,lon)=>{ const n=256*2**TZ, s=Math.sin(lat*D2R); return [(lon+180)/360*n, (0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n]; };
+const worldPx=(z,lat,lon)=>{ const n=256*2**z, s=Math.sin(lat*D2R); return [(lon+180)/360*n, (0.5-Math.log((1+s)/(1-s))/(4*Math.PI))*n]; };
+async function elevGrid(z, lat, lon, R){
+  const dLat=R/111.32, dLon=R/(111.32*Math.cos(lat*D2R));
+  const [x0,y0]=worldPx(z,lat+dLat,lon-dLon), [x1,y1]=worldPx(z,lat-dLat,lon+dLon);
+  const need=[]; for(let ty=Math.floor(y0/256);ty<=Math.floor(y1/256);ty++) for(let tx=Math.floor(x0/256);tx<=Math.floor(x1/256);tx++) need.push([tx,ty]);
+  const T=new Map(await Promise.all(need.map(([x,y])=>tile(z,x,y).then(e=>[x+'/'+y,e]))));
+  return (la,lo)=>{ const [px,py]=worldPx(z,la,lo), tx=Math.floor(px/256), ty=Math.floor(py/256), e=T.get(tx+'/'+ty);
+    if(!e) return 0; const v=e[(Math.floor(py)-ty*256)*256+(Math.floor(px)-tx*256)]; return v<0?0:v; };
+}
 async function computeView(){
   const p=state.point; if(!p) return;
-  const dLat=VIEW_R/111.32, dLon=VIEW_R/(111.32*Math.cos(p.lat*D2R));
-  const [x0,y0]=worldPx(p.lat+dLat,p.lng-dLon), [x1,y1]=worldPx(p.lat-dLat,p.lng+dLon);
-  const need=[]; for(let ty=Math.floor(y0/256);ty<=Math.floor(y1/256);ty++) for(let tx=Math.floor(x0/256);tx<=Math.floor(x1/256);tx++) need.push([tx,ty]);
-  let data;
-  try{ data=await Promise.all(need.map(([x,y])=>tile(x,y).then(e=>[x+'/'+y,e]))); }
-  catch(e){ if(state.point===p){ state.view={error:true}; updatePoint(); } return; }
+  let elev, VR;
+  try{
+    const near=await elevGrid(10, p.lat, p.lng, 1);
+    const h=near(p.lat,p.lng)/1000+0.002;
+    VR=Math.min(160, Math.max(40, Math.sqrt(2*R_EFF*h)+Math.sqrt(2*R_EFF*TARGET_KM)));
+    elev=await elevGrid(VR>90?9:10, p.lat, p.lng, VR);   // z9 (~250 m) is plenty for the far range
+  }catch(e){ if(state.point===p){ state.view={error:true}; updatePoint(); } return; }
   if(state.point!==p) return;
-  const T=new Map(data);
-  const elev=(lat,lon)=>{ const [px,py]=worldPx(lat,lon), tx=Math.floor(px/256), ty=Math.floor(py/256), e=T.get(tx+'/'+ty);
-    if(!e) return 0; const v=e[(Math.floor(py)-ty*256)*256+(Math.floor(px)-tx*256)]; return v<0?0:v; };
-  const N=420, cell=2*VIEW_R/N, out=new Uint8Array(N*N), h0=elev(p.lat,p.lng)/1000+0.002;
-  const kmLat=1/111.32, kmLon=1/(111.32*Math.cos(p.lat*D2R)), RAYS=2048, STEP=0.1, NS=16;
+  const dLat=VR/111.32, dLon=VR/(111.32*Math.cos(p.lat*D2R));
+  const N=640, cell=2*VR/N, out=new Uint8Array(N*N), h0=elev(p.lat,p.lng)/1000+0.002;
+  const kmLat=1/111.32, kmLon=1/(111.32*Math.cos(p.lat*D2R)), RAYS=2048, NS=16;
+  const stepAt=d=>Math.min(cell*0.9, Math.max(0.1, d*0.004));
   const secVis=new Float64Array(NS), secTot=new Float64Array(NS);
   const ev=eventFor(p.lat,p.lng), sunAz=ev?ev.az:270;
   const trace=(azDeg, mark)=>{
     const sa=Math.sin(azDeg*D2R), ca=Math.cos(azDeg*D2R), sec=Math.round(azDeg/(360/NS))%NS; let maxA=-Infinity, maxD=0;
-    for(let d=STEP; d<=VIEW_R; d+=STEP){
+    for(let d=0.1; d<=VR; d+=stepAt(d)){
       const dx=d*sa, dy=d*ca, e=elev(p.lat+dy*kmLat, p.lng+dx*kmLon)/1000;
       const a=(e - d*d/(2*R_EFF) - h0)/d;
       if(mark){
         // a spot counts as visible when something 10 m tall standing there can be seen (area-weighted by d)
-        const vis = a + 0.010/d >= maxA;
-        secTot[sec]+=d; if(vis){ secVis[sec]+=d; const ix=Math.floor((dx+VIEW_R)/cell), iy=Math.floor((VIEW_R-dy)/cell); if(ix>=0&&iy>=0&&ix<N&&iy<N) out[iy*N+ix]=1; }
+        const vis = a + 0.010/d >= maxA, w=d*stepAt(d);
+        secTot[sec]+=w; if(vis){ secVis[sec]+=w; const ix=Math.floor((dx+VR)/cell), iy=Math.floor((VR-dy)/cell); if(ix>=0&&iy>=0&&ix<N&&iy<N) out[iy*N+ix]=1; }
       }
       if(a>maxA && d>0.3){ maxA=a; maxD=d; }
     }
@@ -608,12 +659,12 @@ async function computeView(){
   const [hA,hD]=trace(sunAz,false);
   const sectors=[...secVis].map((v,i)=>v/secTot[i]);
   const dirs=[]; for(let i=0;i<8;i++){ const a=2*i; dirs.push((secVis[a]+secVis[(a+1)%NS]*0.5+secVis[(a+NS-1)%NS]*0.5)/(secTot[a]+secTot[(a+1)%NS]*0.5+secTot[(a+NS-1)%NS]*0.5)); }
-  let vis=0, tot=0; for(let iy=0;iy<N;iy++) for(let ix=0;ix<N;ix++){ const dx=(ix+0.5)*cell-VIEW_R, dy=VIEW_R-(iy+0.5)*cell; if(dx*dx+dy*dy<=VIEW_R*VIEW_R){ tot++; vis+=out[iy*N+ix]; } }
+  let vis=0, tot=0; for(let iy=0;iy<N;iy++) for(let ix=0;ix<N;ix++){ const dx=(ix+0.5)*cell-VR, dy=VR-(iy+0.5)*cell; if(dx*dx+dy*dy<=VR*VR){ tot++; vis+=out[iy*N+ix]; } }
   const cv=document.createElement('canvas'); cv.width=cv.height=N; const g=cv.getContext('2d'), img=g.createImageData(N,N);
   const col=[19,170,186];
   for(let i=0;i<N*N;i++) if(out[i]){ img.data[i*4]=col[0]; img.data[i*4+1]=col[1]; img.data[i*4+2]=col[2]; img.data[i*4+3]=135; }
   g.putImageData(img,0,0);
-  state.view={ url:cv.toDataURL(), bounds:[[p.lat-dLat,p.lng-dLon],[p.lat+dLat,p.lng+dLon]], elev:h0*1000-2, pct:Math.round(vis/tot*100),
+  state.view={ url:cv.toDataURL(), bounds:[[p.lat-dLat,p.lng-dLon],[p.lat+dLat,p.lng+dLon]], elev:h0*1000-2, pct:Math.round(vis/tot*100), radius:VR,
     horizonDeg:Math.max(0,Math.atan(hA)/D2R), horizonKm:hD, sectors, dirs };
   updatePoint(); renderView();
 }
@@ -644,7 +695,7 @@ $('installSheet').onclick = e=>{ if(e.target.id==='installSheet') $('installShee
 /* ---------- go ---------- */
 let mvT; map.on('moveend', ()=>{ clearTimeout(mvT); mvT=setTimeout(load, 350); });
 map.on('zoomstart', ()=>{ [redOverlay,cloudOverlay].forEach(o=>o&&o.setOpacity(0.35)); });
-legend(); load();
+load();
 </script>
 </body>
 </html>

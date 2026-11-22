@@ -1,5 +1,5 @@
 // Service worker: keeps the app itself available and fast. Forecasts and map tiles always come from the network.
-const VERSION = 'redsky-v1';
+const VERSION = 'redsky-v2';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
