@@ -44,10 +44,21 @@ body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--f-body);-webkit-f
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-/* top: status only */
-.top{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:0;right:0;z-index:1000;display:flex;justify-content:center;padding:0 16px;pointer-events:none}
-.status{pointer-events:auto;font-size:13px;color:var(--muted);padding:3px 12px;border-radius:999px;display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums}
-.status b{color:var(--fg);font-weight:500}
+/* top: the chosen place's name, doubling as a place search */
+.top{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:0;right:0;z-index:1200;display:flex;flex-direction:column;align-items:center;padding:0 16px;pointer-events:none}
+.search{pointer-events:auto;width:100%;max-width:420px;display:flex;align-items:center;gap:8px;padding:0 6px 0 14px;height:44px;border-radius:999px;box-sizing:border-box}
+.search>svg{width:18px;height:18px;flex:none;color:var(--muted)}
+.search input{flex:1;min-width:0;height:100%;font:500 15px var(--f-body);color:var(--fg);background:transparent;border:0;text-overflow:ellipsis}
+.search input:focus{outline:none}
+.search input::-webkit-search-cancel-button,.search input::-webkit-search-decoration{-webkit-appearance:none;appearance:none}
+.search input::placeholder{color:var(--muted);font-weight:400}
+.search .spin{flex:none}
+.search .clr{width:32px;height:32px;border-radius:50%;color:var(--muted);font-size:20px;line-height:1;flex:none}
+.results{pointer-events:auto;width:100%;max-width:420px;margin-top:6px;border-radius:16px;overflow:hidden;box-sizing:border-box}
+.results button{display:block;width:100%;text-align:right;padding:10px 16px;border-top:1px solid var(--line);font-size:14px}
+.results button:first-child{border-top:0}
+.results button small{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.results .none{padding:12px 16px;font-size:14px;color:var(--muted)}
 .spin{width:11px;height:11px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--accent);animation:sp .8s linear infinite;flex:none}
 @keyframes sp{to{transform:rotate(360deg)}}
 
@@ -137,7 +148,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 #sunsvg{position:fixed;inset:0;width:100%;height:100%;z-index:500;pointer-events:none}
 /* info sheet */
 .sheet{position:fixed;inset:0;z-index:2000;display:grid;place-items:center;background:rgba(10,12,20,.35);padding:16px}
-.sheet .box{max-width:440px;border-radius:20px;padding:22px 22px 18px;background:var(--panel-solid);box-shadow:var(--shadow)}
+.sheet .box{max-width:min(440px,100%);box-sizing:border-box;border-radius:20px;padding:22px 22px 18px;background:var(--panel-solid);box-shadow:var(--shadow)}
 .sheet h2{font:700 20px/1.2 var(--f-display);margin:0 0 10px;text-wrap:balance}
 .sheet p{margin:0 0 10px}
 .sheet .small{font-size:12.5px;color:var(--muted)}
@@ -159,7 +170,20 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 .leaflet-control-attribution{font-size:10px;background:var(--panel)!important;color:var(--muted)}
 .leaflet-control-attribution a{color:var(--muted)}
-.pin{width:18px;height:18px;border-radius:50%;background:var(--accent);border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.35);box-sizing:border-box}
+.pin{width:34px;height:44px;filter:drop-shadow(0 3px 3px rgba(0,0,0,.35))}
+.pin svg{display:block;width:100%;height:100%}
+/* the user's position: blue dot, pale accuracy ring, and a fan pointing where the phone faces */
+.me{position:relative;width:22px;height:22px}
+.me .dotc{position:absolute;inset:0;border-radius:50%;background:#1a73e8;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);box-sizing:border-box;z-index:2}
+.me .cone{position:absolute;left:50%;top:50%;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;
+  background:conic-gradient(from -32deg, rgba(26,115,232,0), rgba(26,115,232,.8) 32deg, rgba(26,115,232,0) 64deg, transparent 0);
+  -webkit-mask:radial-gradient(circle, #000 0, #000 25%, transparent 70%);mask:radial-gradient(circle, #000 0, #000 25%, transparent 70%);transition:transform .2s linear}
+.me .cone[hidden]{display:none}
+.helpq{font:700 19px/1 var(--f-display)}
+.sheet .box.helpbox{max-height:calc(100dvh - 32px);overflow:auto}
+.sheet ol{margin:0 0 12px;padding-inline-start:20px}
+.sheet li{margin-bottom:6px}
+.sheet h2.sub{font-size:16px;margin-top:16px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -167,10 +191,19 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 <div id="map" aria-label="מפה"></div>
 
 <svg id="sunsvg" aria-hidden="true"></svg>
-<div class="top"><div class="status glass" id="status"><span class="spin"></span>טוען תחזית…</div></div>
+<div class="top" id="top">
+  <form class="search glass" id="searchForm" role="search" autocomplete="off">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+    <input id="searchIn" type="search" enterkeyhint="search" placeholder="חיפוש מקום" aria-label="חיפוש מקום">
+    <span class="spin" id="topSpin"></span>
+    <button type="button" class="clr" id="searchClr" aria-label="ניקוי" hidden>×</button>
+  </form>
+  <div class="results glass" id="results" hidden></div>
+</div>
 <div class="tl" id="tl" role="toolbar" aria-label="ציר זמן: זריחות ושקיעות"><div class="track" id="track"></div></div>
 
 <div class="side">
+  <button class="glass helpq" id="helpBtn" title="איך משתמשים" aria-label="איך משתמשים">?</button>
   <button class="glass" id="layersBtn" aria-expanded="false" aria-controls="layersPanel" title="שכבות" aria-label="שכבות">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 12.5l9 5 9-5"/><path d="M3 17l9 5 9-5" opacity=".55"/></svg>
   </button>
@@ -193,7 +226,6 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   <h3>שכבות מידע</h3>
   <div id="toggles"></div>
   <div class="links">
-    <button class="help" id="infoBtn">איך זה עובד?</button>
     <button class="help" id="installBtn" hidden>התקנה בטלפון</button>
   </div>
 </div>
@@ -209,8 +241,18 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 <div class="panel glass" id="favPanel" hidden></div>
 
 <div class="sheet" id="sheet" hidden>
-  <div class="box">
-    <h2>איך מזהים שמיים אדומים</h2>
+  <div class="box helpbox">
+    <h2>איך משתמשים</h2>
+    <ol>
+      <li>בחרו מיקום: הקישו על המפה, חפשו מקום בשורת החיפוש למעלה, או לחצו על כפתור המיקום כדי לבחור את המקום שבו אתם נמצאים.</li>
+      <li>הסתכלו על ציר הזמן למטה. כל זריחה ושקיעה בו נצבעת לפי הסיכוי לשמיים אדומים במקום שבחרתם, כך שרואים מיד מתי כדאי לצאת. גוררים אותו הצידה כדי לראות את הימים הבאים.</li>
+      <li>הקישו על זריחה או שקיעה בציר הזמן כדי לראות אותה על המפה. המפה נצבעת באדום במקומות שבהם יש סיכוי, והקו המקווקו מהנקודה מראה את כיוון השמש.</li>
+      <li>השכבה הכחולה סביב הנקודה היא שדה הראייה: היא מסמנת את השטח שרואים מהנקודה עד האופק, לפי גובה פני השטח. כך אפשר לבדוק שאין הר או רכס שחוסם את הנוף לכיוון השמש.</li>
+      <li>כפתור הנקודה בצד פותח את הנתונים שלה: הסיכוי, העננים, והאם האופק לכיוון השמש פתוח.</li>
+      <li>הכוכב שומר את המקום. מקומות שמורים נבדקים בכל פתיחה, וכשיש סיכוי טוב מופיעה הודעה.</li>
+      <li>כפתור השיתוף יוצר תמונה של התחזית עם קישור ניווט למקום.</li>
+    </ol>
+    <h2 class="sub">איך מזהים שמיים אדומים</h2>
     <p>עננים נצבעים באדום אחרי השקיעה (או לפני הזריחה), כשהשמש כבר מתחת לאופק אבל הקרניים שלה עדיין מגיעות אל העננים מלמטה.</p>
     <p>לכל נקודה במפה נבדקים שני דברים: האם יש מעליה עננים בינוניים או גבוהים (מ-3 ק״מ ומעלה, כולל ענני נוצה בגובה 8 ק״מ) שיכולים להיצבע, והאם הדרך של קרני השמש אליהם, לאורך מאות קילומטרים לכיוון השמש, פנויה מעננים שיחסמו את האור. כשבוחרים נקודה, התחזית לאורך כיוון השמש שלה נשלפת בצפיפות גבוהה יותר, כדי לדייק את הסיכוי. עננים נמוכים מעל הנקודה מורידים את הסיכוי, כי הם מסתירים את השמיים.</p>
     <p>הקישו על המפה כדי לבחור נקודה, ופתחו את כפתור הנקודה בצד כדי לראות את הנתונים שלה.</p>
@@ -247,7 +289,7 @@ const MAX_POINTS = 200, PATH_KM = 600, PATH_STEP = 25, DAYS = 5;
 const store = { get(k,d){ try{ const v=localStorage.getItem('redsky.'+k); return v==null?d:JSON.parse(v); }catch(e){ return d; } },
                 set(k,v){ try{ localStorage.setItem('redsky.'+k, JSON.stringify(v)); }catch(e){} } };
 const state = { mode:'sunset', day:0, point:null, F:null, view:null, reqId:0,
-  basemap: store.get('basemap','streets'), show: Object.assign({red:true, clouds:false, view:true}, store.get('show',{})) };
+  basemap: store.get('basemap','streets'), show: Object.assign({red:true, view:true}, store.get('show',{}), {clouds:false}) };
 const $ = id => document.getElementById(id);
 const isDark = () => matchMedia('(prefers-color-scheme: dark)').matches;
 
@@ -287,7 +329,6 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', ()=>{ setB
 /* ---------- info layers toggles ---------- */
 const TOGGLES = [
   {k:'red', name:'שמיים אדומים', color:'#e8553f', icon:'<path d="M3 17h18M6 21h12"/><path d="M7.5 17a4.5 4.5 0 0 1 9 0"/><path d="M12 6v2.5M5.6 9.6l1.6 1.6M18.4 9.6l-1.6 1.6"/>'},
-  {k:'clouds', name:'עננים', color:'#7d8aa3', icon:'<path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18z"/>'},
   {k:'view', name:'שדה ראייה', color:'#138f9e', icon:'<path d="M2 19l6-9 4 5 3-3 7 7z"/><circle cx="17" cy="6" r="2"/>'},
 ];
 function buildToggles(){
@@ -311,8 +352,8 @@ $('layersBtn').onclick=()=>openPanel('layers');
 $('pointBtn').onclick=()=>openPanel('point');
 $('favBtn').onclick=()=>openPanel('fav');
 const anyPanel = () => ['layers','point','fav'].find(n=>!$(n+'Panel').hidden);
-document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ const n=anyPanel(); if(n) openPanel(n); $('sheet').hidden=true; $('shareSheet').hidden=true; }});
-$('infoBtn').onclick = ()=>{ $('sheet').hidden=false; };
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ const n=anyPanel(); if(n) openPanel(n); $('sheet').hidden=true; $('shareSheet').hidden=true; hideResults(); }});
+$('helpBtn').onclick = ()=>{ $('sheet').hidden=false; };
 $('sheetOk').onclick = ()=>{ $('sheet').hidden=true; };
 $('sheet').onclick = e=>{ if(e.target.id==='sheet') $('sheet').hidden=true; };
 
@@ -355,7 +396,7 @@ function updateTimeline(){
     // colour each sunrise/sunset by the red-sky chance at the chosen point
     const r=state.point ? fineScore(+b.dataset.day,b.dataset.mode) : null;
     if(r){ const c=ramp(RED_STOPS, r.s); b.style.setProperty('--hot',`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${(Math.max(c[3],0)/255).toFixed(2)})`);
-      if(r.s>=0.2) b.dataset.pct=Math.round(r.s*100); else delete b.dataset.pct; b.title=`סיכוי ${Math.round(r.s*100)}%`; }
+      if(r.s>=0.3) b.dataset.pct=Math.round(r.s*100); else delete b.dataset.pct; b.title=`סיכוי ${Math.round(r.s*100)}%`; }
     else { b.style.removeProperty('--hot'); delete b.dataset.pct; b.removeAttribute('title'); }
   }
   $('track').classList.toggle('scored', !!(state.point && fineScore()));
@@ -369,7 +410,7 @@ function scrollToSelected(smooth){
   const tl=$('tl'), br=b.closest('.day').getBoundingClientRect(), tr=tl.getBoundingClientRect();
   tl.scrollBy({left:(br.left+br.width/2)-(tr.left+tr.width/2), behavior:smooth?'smooth':'auto'});
 }
-buildTimeline(); pickNext(); updateTimeline(); requestAnimationFrame(()=>scrollToSelected(false));
+buildTimeline(); pickNext(); updateTimeline(); // the strip opens at today; later days are a drag away
 (function dragScroll(){ // touch scrolls natively; a mouse drags the strip, and the wheel scrolls it sideways
   const tl=$('tl'); let x0=null, s0=0, moved=false;
   tl.addEventListener('pointerdown', e=>{ if(e.pointerType!=='mouse') return; x0=e.clientX; s0=tl.scrollLeft; moved=false; });
@@ -381,25 +422,95 @@ buildTimeline(); pickNext(); updateTimeline(); requestAnimationFrame(()=>scrollT
 $('track').addEventListener('click', e=>{ const b=e.target.closest('.ev'); if(!b) return;
   state.day=+b.dataset.day; state.mode=b.dataset.mode; updateTimeline(); scrollToSelected(true);
   if(state.point) computeView(); load(); });
+/* ---------- my location: blue dot with the direction the phone faces ---------- */
+const me = {marker:null, ring:null, ll:null, heading:null, watch:null, orient:false};
+function drawMe(){
+  if(!me.ll) return;
+  if(!me.marker){
+    me.ring=L.circle(me.ll,{radius:me.acc||0,color:'#1a73e8',weight:1,opacity:.35,fillColor:'#1a73e8',fillOpacity:.12,interactive:false}).addTo(map);
+    me.marker=L.marker(me.ll,{icon:L.divIcon({className:'',html:'<div class="me"><div class="cone" hidden></div><div class="dotc"></div></div>',iconSize:[22,22],iconAnchor:[11,11]}),keyboard:false,interactive:false,zIndexOffset:500}).addTo(map);
+  } else { me.marker.setLatLng(me.ll); me.ring.setLatLng(me.ll).setRadius(me.acc||0); }
+  const cone=me.marker.getElement()?.querySelector('.cone');
+  if(cone){ cone.hidden=me.heading==null; if(me.heading!=null) cone.style.transform=`rotate(${me.heading}deg)`; }
+}
+function onOrient(e){
+  let h = e.webkitCompassHeading!=null ? e.webkitCompassHeading            // iOS: degrees from north
+        : (e.absolute || e.type==='deviceorientationabsolute') && e.alpha!=null ? 360-e.alpha : null; // Android
+  if(h==null) return;
+  h=(h+((screen.orientation&&screen.orientation.angle)||0)+360)%360;
+  if(me.heading==null || Math.abs(((h-me.heading+540)%360)-180)>2){ me.heading=h; drawMe(); }
+}
+function startOrientation(){ // iOS asks permission, and only from a tap
+  if(me.orient) return;
+  const go=()=>{ me.orient=true; addEventListener('ondeviceorientationabsolute' in window?'deviceorientationabsolute':'deviceorientation', onOrient, true); };
+  if(window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission==='function')
+    DeviceOrientationEvent.requestPermission().then(r=>{ if(r==='granted') go(); }).catch(()=>{});
+  else if(window.DeviceOrientationEvent) go();
+}
+function watchMe(onFirst){
+  if(me.watch!=null){ if(onFirst && me.ll) onFirst(me.ll); return; }
+  let first=onFirst;
+  me.watch=navigator.geolocation.watchPosition(p=>{
+    me.ll=L.latLng(p.coords.latitude,p.coords.longitude); me.acc=p.coords.accuracy;
+    if(!me.orient && p.coords.heading!=null && !isNaN(p.coords.heading) && p.coords.speed>1) me.heading=p.coords.heading;
+    drawMe(); if(first){ first(me.ll); first=null; }
+  }, err=>{ if(first) toast('לא הצלחנו לאתר את המיקום'); navigator.geolocation.clearWatch(me.watch); me.watch=null; first=null; },
+  {enableHighAccuracy:true, timeout:15000, maximumAge:10000});
+}
 $('locate').onclick = ()=>{
   if(!navigator.geolocation) return toast('הדפדפן לא מאפשר איתור מיקום');
-  navigator.geolocation.getCurrentPosition(p=>{ const ll=L.latLng(p.coords.latitude,p.coords.longitude); map.setView(ll, Math.max(map.getZoom(),10)); selectPoint(ll); },
-    ()=>toast('לא הצלחנו לאתר את המיקום'), {timeout:8000});
+  startOrientation();
+  watchMe(ll=>{ map.setView(ll, Math.max(map.getZoom(),12)); selectPoint(ll); });
 };
+// if location was already allowed, show the blue dot right away (no prompt)
+try{ navigator.permissions && navigator.permissions.query({name:'geolocation'}).then(r=>{ if(r.state==='granted') watchMe(); }).catch(()=>{}); }catch(e){}
+
+/* ---------- top bar: the chosen place's name, and search by name ---------- */
+let searchQ=null;
+function showPlaceName(){
+  const inp=$('searchIn'), p=state.point; if(document.activeElement===inp) return;
+  $('searchClr').hidden=!p;
+  if(!p){ inp.value=''; return; }
+  const fav=state.favs.find(f=>f.id===state.favId);
+  if(fav && fav.named){ inp.value=fav.name; return; }
+  inp.value=p._place || fav?.name || '';
+  if(!p._place) placeFor(p).then(n=>{ if(state.point===p && document.activeElement!==inp) inp.value=n || fav?.name || `${p.lat.toFixed(4)}, ${p.lng.toFixed(4)}`; });
+}
+const hideResults=()=>{ $('results').hidden=true; $('results').innerHTML=''; };
+$('searchIn').addEventListener('focus', e=>{ e.target.select(); $('searchClr').hidden=false; });
+$('searchIn').addEventListener('blur', ()=>setTimeout(()=>{ if(document.activeElement!==$('searchIn') && !$('results').matches(':hover')){ hideResults(); showPlaceName(); } }, 200));
+$('searchClr').onclick=()=>{ hideResults(); $('searchIn').value=''; if(document.activeElement!==$('searchIn')) clearPoint(); $('searchIn').focus(); };
+$('searchForm').addEventListener('submit', async e=>{
+  e.preventDefault(); const q=$('searchIn').value.trim(); if(q.length<2) return;
+  const id=searchQ={}; $('topSpin').hidden=false;
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=he&q=${encodeURIComponent(q)}`);
+    if(id!==searchQ) return; if(!r.ok) throw new Error(r.status);
+    const list=await r.json(), box=$('results'); box.innerHTML='';
+    if(!list.length){ box.innerHTML='<div class="none">לא נמצאו תוצאות</div>'; }
+    for(const it of list){
+      const parts=it.display_name.split(', '), btn=document.createElement('button'); btn.type='button';
+      const t=document.createElement('span'); t.textContent=it.name||parts[0];
+      const sm=document.createElement('small'); sm.textContent=parts.slice(1).join(', ');
+      btn.append(t, sm);
+      btn.onclick=()=>{ hideResults(); const ll=L.latLng(+it.lat,+it.lon); ll._place=it.name||parts[0];
+        map.setView(ll, Math.max(map.getZoom(), it.type==='city'?11:13)); $('searchIn').blur(); selectPoint(ll); if($('pointPanel').hidden) openPanel('point'); };
+      box.append(btn);
+    }
+    box.hidden=false;
+  }catch(err){ toast('החיפוש לא הצליח'); }
+  finally{ if(id===searchQ) $('topSpin').hidden=true; }
+});
 let toastTimer;
 function toast(msg, retry, ms=3500){
   const t=$('toast'); t.innerHTML=''; t.append(msg);
   if(retry){ const b=document.createElement('button'); b.textContent='נסו שוב'; b.onclick=()=>{t.hidden=true; retry();}; t.append(b); }
   t.hidden=false; clearTimeout(toastTimer); if(!retry) toastTimer=setTimeout(()=>t.hidden=true, ms);
 }
-function setStatus(html, loading){ $('status').innerHTML=(loading?'<span class="spin"></span>':'')+html; }
+function setStatus(msg, loading){ $('topSpin').hidden=!loading; if(msg && !loading) toast(msg); }
 
 /* ---------- legend & colors ---------- */
-const RED_STOPS = [[0,[255,175,90,0]],[0.12,[255,175,90,40]],[0.35,[255,128,60,135]],[0.6,[236,60,50,185]],[0.85,[190,25,75,210]],[1,[140,20,95,225]]];
-function cloudStops(){ const white = state.basemap==='satellite';
-  return white ? [[0,[235,240,250,0]],[0.15,[235,240,250,30]],[1,[245,248,255,210]]]
-               : [[0,[60,72,96,0]],[0.15,[60,72,96,25]],[1,[52,62,86,190]]]; }
-function stopsCss(stops){ return 'linear-gradient(to left,'+stops.map(([p,c])=>`rgba(${c[0]},${c[1]},${c[2]},${Math.max(c[3],30)/255}) ${p*100}%`).join(',')+')'; }
+const RED_STOPS = [[0,[255,175,90,0]],[0.15,[255,180,95,0]],[0.3,[255,165,80,70]],[0.5,[255,125,55,135]],[0.7,[236,60,50,185]],[0.88,[190,25,75,210]],[1,[140,20,95,225]]];
 function ramp(stops, v){
   if(v<=stops[0][0]) return stops[0][1];
   for(let i=1;i<stops.length;i++){ if(v<=stops[i][0]){ const [p0,c0]=stops[i-1],[p1,c1]=stops[i], f=(v-p0)/(p1-p0);
@@ -500,7 +611,6 @@ async function load(){
   const id = ++state.reqId, alive = () => id===state.reqId; updateTimeline();
   const c = map.getCenter(), ev = eventFor(c.lat, c.lng);
   if(!ev){ setStatus('אין שקיעה או זריחה ביום הזה כאן'); return; }
-  const label = state.mode==='sunset'?'שקיעה':'זריחה', done = `${label} <b>${fmtTime(ev.time)}</b> · השמש ${state.mode==='sunset'?'שוקעת':'זורחת'} ב${compass(ev.az)}`;
   const hourF = ev.time.getTime()/3600000;
   // near grid: the screen, fine. far grid: screen + the stretch toward the sun the light crosses, coarse (≥1°)
   const b = map.getBounds().pad(0.08), clamp = v => Math.max(-85, Math.min(85, v));
@@ -511,15 +621,15 @@ async function load(){
   const need = g => g.keys.filter(k=>!fresh(k)).map(keyPt);
   const show = (nearG, farG) => { state.F={near:nearG, far:farG, az:ev.az, time:ev.time}; render(); updatePoint(); };
   try{
-    if(need(G).length || need(N).length) setStatus(`${label} <b>${fmtTime(ev.time)}</b> · טוען תחזית…`, true);
+    if(need(G).length || need(N).length) setStatus('', true);
     await ensure(need(G), alive); if(!alive()) return;
     fill(G, hourF);
     if(need(N).length){ show(fill(N, hourF, G), G); await ensure(need(N), alive); if(!alive()) return; } // coarse preview first
-    show(fill(N, hourF, G), G); setStatus(done);
+    show(fill(N, hourF, G), G); setStatus('');
   }catch(err){
     console.error('forecast load failed', err);
     if(!alive()) return;
-    setStatus(`${label} <b>${fmtTime(ev.time)}</b>`);
+    setStatus('');
     if(err.hour) toast('הגענו למכסת הבקשות לשעה הזו. נסו שוב מאוחר יותר.');
     else toast('לא הצלחנו לטעון את תחזית העננים.', load);
   }
@@ -560,11 +670,15 @@ function pathLight(h, cloudAt){
   }
   return 0.7*best+0.3*sum/K;
 }
-function deck(c){ if(c<=0.03) return 0; let v=Math.min(1,c/0.4); if(c>0.8) v*=1-(c-0.8)/0.2*0.45; return v; }
+// How well a cloud layer of cover c can light up: a few scattered clouds give little, a solid deck blocks the light.
+function deck(c){ if(c<=0.05) return 0; let v=Math.min(1,(c-0.05)/0.5); if(c>0.75) v*=1-(c-0.75)/0.25*0.55; return v; }
+// Calibration: the raw score is raised to this power so that only clearly good setups get high numbers
+// (raw 0.5 → 35%, 0.7 → 59%, 0.9 → 85%). Before this the map showed half the country at "good" on an ordinary day.
+const PICKY = 1.5;
 function scoreFrom(low, mid, high, cloudAt){
-  const sMid  = mid>0.03  ? deck(mid)*Math.max(...MID_H.map(h=>pathLight(h,cloudAt))) : 0;
-  const sHigh = high>0.03 ? deck(high)*pathLight(HIGH_H,cloudAt)*0.9 : 0;
-  return {s:(1-(1-sMid)*(1-sHigh))*(1-0.75*low), low, mid, high};
+  const sMid  = mid>0.05  ? deck(mid)*Math.max(...MID_H.map(h=>pathLight(h,cloudAt))) : 0;
+  const sHigh = high>0.05 ? deck(high)*pathLight(HIGH_H,cloudAt)*0.9 : 0;
+  return {s:Math.pow((1-(1-sMid)*(1-sHigh))*(1-0.85*low), PICKY), low, mid, high};
 }
 function redScore(lat, lon){
   const F=state.F, dLat=Math.cos(F.az*D2R)/111.32, dLon=Math.sin(F.az*D2R)/(111.32*Math.cos(lat*D2R));
@@ -614,7 +728,7 @@ function fineScore(day=state.day, mode=state.mode){
 
 /* ---------- favourite places (kept on this device) ---------- */
 // Each saved place gets the same dense forecast as a selected point; on opening the app we look for good chances.
-const GOOD = 0.45;
+const GOOD = 0.55;
 state.favs = store.get('favs', []); state.favId = null;
 const favData = new Map(); // id -> fine forecast object, or {error}
 const saveFavs = () => store.set('favs', state.favs.map(({id,name,lat,lng,named})=>({id,name,lat,lng,named})));
@@ -652,7 +766,7 @@ function renderFavs(){
       strip='<span class="strip">'+favEvents(f).map(e=>{ const c=e.r?ramp(RED_STOPS,e.r.s):null;
         return `<i class="${e.past?'past':''}" title="${dayName(e.d)}, ${modeName(e.m)}${e.r?' '+Math.round(e.r.s*100)+'%':''}" style="${c&&c[3]>20?`background:rgba(${c[0]|0},${c[1]|0},${c[2]|0},${(c[3]/255).toFixed(2)})`:''}"></i>`; }).join('')+'</span>';
       const b=favBest(f);
-      best = b && b.r.s>=0.2 ? `הכי טוב: ${dayName(b.d)} ב${modeName(b.m)} <b>${Math.round(b.r.s*100)}%</b>` : 'אין סיכוי של ממש בימים הקרובים';
+      best = b && b.r.s>=0.3 ? `הכי טוב: ${dayName(b.d)} ב${modeName(b.m)} <b>${Math.round(b.r.s*100)}%</b>` : 'אין סיכוי של ממש בימים הקרובים';
     }
     return `<div class="fav"><button class="go" data-id="${fav.id}"><span class="nm"></span>${strip}<span class="best">${best}</span></button>
       <button class="del" data-del="${fav.id}" aria-label="מחיקה" title="מחיקה">×</button></div>`;
@@ -727,11 +841,11 @@ $('starBtn').onclick=()=>{
     setTimeout(()=>{ $("favName").focus(); $("favName").select(); }, 80); }
   saveFavs(); updateFavRow(); favAlert(false);
 };
-$('favName').addEventListener('input', e=>{ const fav=state.favs.find(f=>f.id===state.favId); if(!fav) return; fav.name=e.target.value.trim()||fav.name; fav.named=true; saveFavs(); });
+$('favName').addEventListener('input', e=>{ const fav=state.favs.find(f=>f.id===state.favId); if(!fav) return; fav.name=e.target.value.trim()||fav.name; fav.named=true; saveFavs(); showPlaceName(); });
 $('favName').addEventListener('keydown', e=>{ if(e.key==='Enter') e.target.blur(); });
 
 /* ---------- rendering ---------- */
-let cloudOverlay=null, redOverlay=null, viewOverlay=null, pinMarker=null;
+let redOverlay=null, viewOverlay=null, pinMarker=null;
 function paint(fn, stops){
   const size=map.getSize(), cols=Math.min(140,Math.max(60,Math.round(size.x/9))), rows=Math.max(20,Math.round(cols*size.y/size.x));
   const cv=document.createElement('canvas'); cv.width=cols; cv.height=rows;
@@ -745,19 +859,18 @@ function paint(fn, stops){
   return L.imageOverlay(cv.toDataURL(), map.getBounds(), {interactive:false}).addTo(map);
 }
 function render(){
-  [cloudOverlay,redOverlay].forEach(l=>l&&map.removeLayer(l)); cloudOverlay=redOverlay=null;
+  if(redOverlay) map.removeLayer(redOverlay); redOverlay=null;
   if(!state.F) return;
-  if(state.show.clouds) cloudOverlay=paint((la,lo)=>{ const l=sample('low',la,lo), m=sample('mid',la,lo), h=sample('high',la,lo); return 1-(1-l)*(1-m)*(1-h); }, cloudStops());
   if(state.show.red) redOverlay=paint((la,lo)=>redScore(la,lo).s, RED_STOPS);
 }
 
 /* ---------- selected point ---------- */
-function verdict(s){ return s>=0.7?['מרהיב','var(--good)']:s>=0.45?['טוב','var(--good)']:s>=0.2?['בינוני','var(--mid)']:['נמוך','var(--low)']; }
+function verdict(s){ return s>=0.75?['מרהיב','var(--good)']:s>=0.55?['טוב','var(--good)']:s>=0.3?['בינוני','var(--mid)']:['נמוך','var(--low)']; }
 function selectPoint(ll, favId=null){
   state.point=ll; state.favId=favId;
-  if(!pinMarker) pinMarker=L.marker(ll,{icon:L.divIcon({className:'',html:'<div class="pin"></div>',iconSize:[18,18],iconAnchor:[9,9]}),keyboard:false,interactive:false}).addTo(map);
+  if(!pinMarker) pinMarker=L.marker(ll,{icon:L.divIcon({className:'',html:'<div class="pin"><svg viewBox="0 0 34 44"><path d="M17 43C17 43 3 26.5 3 16a14 14 0 0 1 28 0c0 10.5-14 27-14 27z" fill="#e5322d" stroke="#fff" stroke-width="2"/><circle cx="17" cy="16" r="5.2" fill="#fff"/></svg></div>',iconSize:[34,44],iconAnchor:[17,43]}),keyboard:false,interactive:false,zIndexOffset:1000}).addTo(map);
   else pinMarker.setLatLng(ll);
-  state.view=null; renderView(); updatePoint(); computeView();
+  state.view=null; renderView(); updatePoint(); computeView(); showPlaceName();
   const known=favId!=null && favData.get(favId);   // a saved place may already have its forecast
   if(known && !known.error){ known.p=ll; known.memo.clear(); state.fine=known; updatePoint(); } else refinePoint();
 }
@@ -768,7 +881,7 @@ map.on('click', e=>{
 });
 function clearPoint(){
   state.point=null; state.view=null;
-  [pinMarker,viewOverlay].forEach(l=>l&&map.removeLayer(l)); pinMarker=viewOverlay=null; updatePoint();
+  [pinMarker,viewOverlay].forEach(l=>l&&map.removeLayer(l)); pinMarker=viewOverlay=null; updatePoint(); showPlaceName();
 }
 function drawSunLine(){
   const svg=$('sunsvg'); svg.innerHTML='';
@@ -776,7 +889,7 @@ function drawSunLine(){
   const W=innerWidth, H=innerHeight, r=$('map').getBoundingClientRect();
   const P=map.latLngToContainerPoint(state.point), px=P.x+r.left, py=P.y+r.top;
   const ux=Math.sin(ev.az*D2R), uy=-Math.cos(ev.az*D2R); // Mercator keeps angles, so azimuth maps straight to screen
-  const top=parseFloat(getComputedStyle($('status')).height||0)+40, bot=$('tl').getBoundingClientRect().top-14, M=26;
+  const top=$('searchForm').getBoundingClientRect().bottom+20, bot=$('tl').getBoundingClientRect().top-14, M=26;
   const box=[M, top, W-M, bot]; // usable screen area
   // slab intersection of the ray P + t·u with the box
   let t0=0, t1=Infinity;
@@ -959,7 +1072,7 @@ function shareMessage(){
   const when = ev ? `${modeName(share.mode)} ב-${fmtTime(ev.time)}` : '';
   return [head, [chance, when].filter(Boolean).join(', '), `ניווט: ${navLink(p)}`, `התחזית: ${appLink(p)}`].join('\n');
 }
-const CARD_C = s => s>=0.45?'#ff5a40':s>=0.2?'#ff9a52':'#aab1c2';
+const CARD_C = s => s>=0.55?'#ff5a40':s>=0.3?'#ff9a52':'#aab1c2';
 function wrapLines(ctx, text, maxW, max=2){
   const out=[]; let line='';
   for(const w of text.split(/\s+/)){ const t=line?line+' '+w:w; if(ctx.measureText(t).width>maxW && line){ out.push(line); line=w; } else line=t; }
@@ -1070,7 +1183,7 @@ $('installSheet').onclick = e=>{ if(e.target.id==='installSheet') $('installShee
 
 /* ---------- go ---------- */
 let mvT; map.on('moveend', ()=>{ clearTimeout(mvT); mvT=setTimeout(load, 350); });
-map.on('zoomstart', ()=>{ [redOverlay,cloudOverlay].forEach(o=>o&&o.setOpacity(0.35)); });
+map.on('zoomstart', ()=>{ if(redOverlay) redOverlay.setOpacity(0.35); });
 const atParam=(new URLSearchParams(location.search).get('at')||'').split(',').map(Number);
 const deepLink = atParam.length===2 && atParam.every(isFinite) && Math.abs(atParam[0])<=90 ? L.latLng(atParam[0], atParam[1]) : null;
 if(deepLink){ map.setView(deepLink, 11); history.replaceState(null,'',location.pathname); }
