@@ -249,6 +249,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <li>הקישו על זריחה או שקיעה בציר הזמן כדי לראות אותה על המפה. המפה נצבעת באדום במקומות שבהם יש סיכוי, והקו המקווקו מהנקודה מראה את כיוון השמש.</li>
       <li>השכבה הכחולה סביב הנקודה היא שדה הראייה: היא מסמנת את השטח שרואים מהנקודה עד האופק, לפי גובה פני השטח. כך אפשר לבדוק שאין הר או רכס שחוסם את הנוף לכיוון השמש.</li>
       <li>כפתור הנקודה בצד פותח את הנתונים שלה: הסיכוי, העננים, והאם האופק לכיוון השמש פתוח.</li>
+      <li>הנקודות הירוקות הן נקודות תצפית מוכרות. נקודה כתומה או אדומה מסמנת שאפשר לראות ממנה שמיים אדומים באותה זריחה או שקיעה, מעליה או במרחק לכיוון השמש: אדום כשהם חזקים וקרובים, כתום כשהם חלשים יותר או רחוקים. הקשה על נקודה בוחרת אותה.</li>
       <li>הכוכב שומר את המקום. מקומות שמורים נבדקים בכל פתיחה, וכשיש סיכוי טוב מופיעה הודעה.</li>
       <li>כפתור השיתוף יוצר תמונה של התחזית עם קישור ניווט למקום.</li>
     </ol>
@@ -257,7 +258,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <p>לכל נקודה במפה נבדקים שני דברים: האם יש מעליה עננים בינוניים או גבוהים (מ-3 ק״מ ומעלה, כולל ענני נוצה בגובה 8 ק״מ) שיכולים להיצבע, והאם הדרך של קרני השמש אליהם, לאורך מאות קילומטרים לכיוון השמש, פנויה מעננים שיחסמו את האור. כשבוחרים נקודה, התחזית לאורך כיוון השמש שלה נשלפת בצפיפות גבוהה יותר, כדי לדייק את הסיכוי. עננים נמוכים מעל הנקודה מורידים את הסיכוי, כי הם מסתירים את השמיים.</p>
     <p>הקישו על המפה כדי לבחור נקודה, ופתחו את כפתור הנקודה בצד כדי לראות את הנתונים שלה.</p>
     <p>ציר הזמן למטה נצבע לפי הסיכוי בנקודה שבחרתם, כך שרואים מיד באיזו זריחה או שקיעה כדאי לצאת. מקומות ששומרים בכוכב נבדקים בכל פתיחה של האפליקציה, וכשיש סיכוי טוב באחד מהם תופיע הודעה.</p>
-    <p class="small">תחזית עננים: Open-Meteo. גובה פני השטח: Terrain Tiles (AWS). שמות מקומות: OpenStreetMap (Nominatim, Overpass, Photon). זו הערכה מבוססת תחזית, לא הבטחה.</p>
+    <p class="small">תחזית עננים: Open-Meteo. גובה פני השטח: Terrain Tiles (AWS). שמות מקומות ונקודות תצפית: OpenStreetMap (Nominatim, Overpass, Photon). זו הערכה מבוססת תחזית, לא הבטחה.</p>
     <button class="ok" id="sheetOk">הבנתי</button>
   </div>
 </div>
@@ -289,13 +290,14 @@ const MAX_POINTS = 200, PATH_KM = 600, PATH_STEP = 25, DAYS = 5;
 const store = { get(k,d){ try{ const v=localStorage.getItem('redsky.'+k); return v==null?d:JSON.parse(v); }catch(e){ return d; } },
                 set(k,v){ try{ localStorage.setItem('redsky.'+k, JSON.stringify(v)); }catch(e){} } };
 const state = { mode:'sunset', day:0, point:null, F:null, view:null, reqId:0,
-  basemap: store.get('basemap','streets'), show: Object.assign({red:true, view:true}, store.get('show',{}), {clouds:false}) };
+  basemap: store.get('basemap','streets'), show: Object.assign({red:true, vp:true, view:true}, store.get('show',{}), {clouds:false}) };
 const $ = id => document.getElementById(id);
 const isDark = () => matchMedia('(prefers-color-scheme: dark)').matches;
 
 /* ---------- map & basemaps ---------- */
 const map = L.map('map', {zoomControl:false, minZoom:5, maxZoom:18, attributionControl:false}).setView([31.6, 34.95], 8);
 L.control.attribution({position:'topleft', prefix:false}).addTo(map);
+map.createPane('vp'); map.getPane('vp').style.zIndex=430;
 map.createPane('labels'); map.getPane('labels').style.zIndex=450; map.getPane('labels').style.pointerEvents='none';
 const esri = s => `https://server.arcgisonline.com/ArcGIS/rest/services/${s}/MapServer/tile/{z}/{y}/{x}`;
 const BASEMAPS = {
@@ -329,6 +331,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', ()=>{ setB
 /* ---------- info layers toggles ---------- */
 const TOGGLES = [
   {k:'red', name:'שמיים אדומים', color:'#e8553f', icon:'<path d="M3 17h18M6 21h12"/><path d="M7.5 17a4.5 4.5 0 0 1 9 0"/><path d="M12 6v2.5M5.6 9.6l1.6 1.6M18.4 9.6l-1.6 1.6"/>'},
+  {k:'vp', name:'נקודות תצפית', color:'#2e8b57', icon:'<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"/><circle cx="12" cy="12" r="2.8"/>'},
   {k:'view', name:'שדה ראייה', color:'#138f9e', icon:'<path d="M2 19l6-9 4 5 3-3 7 7z"/><circle cx="17" cy="6" r="2"/>'},
 ];
 function buildToggles(){
@@ -339,6 +342,7 @@ function buildToggles(){
 buildToggles();
 $('toggles').addEventListener('click', e=>{ const b=e.target.closest('.tog'); if(!b) return;
   const k=b.dataset.k; state.show[k]=!state.show[k]; b.setAttribute('aria-checked',String(state.show[k])); store.set('show',state.show);
+  if(k==='vp'){ renderVP(); if(state.show.vp && map.getZoom()<VP_ZOOM) toast('נקודות התצפית מופיעות כשמתקרבים במפה'); return; }
   if(k==='view'){ renderView(); if(state.show.view && !state.point) toast('הקישו על המפה כדי לבחור נקודת תצפית'); } else render();
 });
 
@@ -887,7 +891,76 @@ function render(){
   if(redOverlay) map.removeLayer(redOverlay); redOverlay=null;
   if(!state.F) return;
   if(state.show.red) redOverlay=paint((la,lo)=>redScore(la,lo).s, RED_STOPS);
+  colorVP();
 }
+
+/* ---------- viewpoints (OpenStreetMap tourism=viewpoint, saved in viewpoints.json) ----------
+   Shown from VP_ZOOM in; each dot is filled by the red-sky chance there for the chosen sunrise/sunset. */
+const VP_ZOOM = 10, VP_ALL = 13; // named viewpoints from zoom 10, the unnamed ones too from zoom 13
+let vpData=null, vpNamed=null, vpRest=null, vpLoading=null;
+const vpRenderer = L.canvas({pane:'vp', padding:0.3});
+function loadVP(){
+  return vpLoading ||= fetch('viewpoints.json').then(r=>r.json()).then(j=>{ vpData=j.v; }).catch(()=>{ vpLoading=null; toast('לא הצלחנו לטעון את נקודות התצפית'); });
+}
+const vpRadius = () => map.getZoom()>=VP_ALL ? 6 : 4.5;
+function vpMarker([la,lo,name,dir]){
+  const m=L.circleMarker([la,lo],{renderer:vpRenderer, radius:vpRadius(), weight:2, color:'#fff', fillColor:'#2e8b57', fillOpacity:1, bubblingMouseEvents:false});
+  m.vpName=name; m.vpDir=parseDir(dir);
+  if(name) m.bindTooltip(name,{direction:'top', offset:[0,-6]});
+  m.on('click', ()=>{ const ll=L.latLng(la,lo); if(name) ll._place=name; const open=anyPanel(); if(open && open!=='point') openPanel(open); selectPoint(ll); });
+  return m;
+}
+function renderVP(){
+  const z=map.getZoom(), on=state.show.vp;
+  if(on && z>=VP_ZOOM && !vpData){ loadVP().then(()=>{ if(vpData) renderVP(); }); return; }
+  if(vpData && !vpNamed){ vpNamed=L.layerGroup(vpData.filter(v=>v[2]).map(vpMarker)); vpRest=L.layerGroup(vpData.filter(v=>!v[2]).map(vpMarker)); }
+  if(!vpNamed) return;
+  for(const [g,minZ] of [[vpNamed,VP_ZOOM],[vpRest,VP_ALL]]){
+    const want=on && z>=minZ;
+    if(want && !map.hasLayer(g)) g.addTo(map); else if(!want && map.hasLayer(g)) map.removeLayer(g);
+  }
+  colorVP();
+}
+// OSM "direction" of a viewpoint: a compass word, degrees, or a range like 200-300. Returns [from,to] in degrees.
+const CMP={N:0,NNE:22.5,NE:45,ENE:67.5,E:90,ESE:112.5,SE:135,SSE:157.5,S:180,SSW:202.5,SW:225,WSW:247.5,W:270,WNW:292.5,NW:315,NNW:337.5};
+function parseDir(d){
+  if(!d) return null; d=String(d).trim().toUpperCase().split(';')[0];
+  const one=v=>CMP[v]!=null?CMP[v]:isFinite(+v)&&v!==''?+v:null;
+  if(d.includes('-')){ const [a,b]=d.split('-').map(one); return a!=null&&b!=null?[a,b]:null; }
+  const v=one(d); return v==null?null:[v-45,v+45]; // a single direction ≈ a 90° view
+}
+const angIn=(az,[a,b])=>{ const w=((b-a)%360+360)%360||360, x=((az-a)%360+360)%360; return x<=w+20 || x>=360-20; };
+// Red sky a viewpoint can see: the chance overhead, or further out toward the sun, worth less the further it is
+// (distant clouds sit low over the horizon). Red = strong and near, orange = weaker or further away.
+const VP_X=[0,10,20,35,50,70,100,140];
+const vpWeight=d=>d<=15?1:Math.max(0.25,1-(d-15)/120*0.75);
+function scoreAny(lat, lon){
+  const F=state.F, dLat=Math.cos(F.az*D2R)/111.32, dLon=Math.sin(F.az*D2R)/(111.32*Math.cos(lat*D2R));
+  return scoreFrom(sampleAny('low',lat,lon), sampleAny('mid',lat,lon), sampleAny('high',lat,lon), (layer,x)=>sampleAny(layer, lat+x*dLat, lon+x*dLon));
+}
+function vpSeen(m){
+  const ll=m.getLatLng(), F=state.F; let best={v:0,d:0};
+  const facing = !m.vpDir || angIn(F.az, m.vpDir);   // a viewpoint tagged as facing elsewhere only counts what's overhead
+  for(const x of facing?VP_X:[0]){
+    const [la,lo]=x?offset(ll.lat,ll.lng,F.az,x):[ll.lat,ll.lng], s=(x?scoreAny(la,lo):redScore(la,lo)).s*vpWeight(x);
+    if(s>best.v) best={v:s,d:x};
+  }
+  return best;
+}
+function colorVP(){
+  if(!vpNamed) return;
+  const b=map.getBounds().pad(0.2), r=vpRadius();
+  for(const g of [vpNamed,vpRest]) if(map.hasLayer(g)) g.eachLayer(m=>{
+    if(!b.contains(m.getLatLng())) return;
+    const {v,d}=state.F ? vpSeen(m) : {v:0,d:0};
+    m.setStyle({fillColor: v>=0.55?'#e5322d':v>=0.3?'#f08a3c':'#2e8b57', radius: v>=0.55?r+1.5:r});
+    const note = v>=0.3 ? (d ? `שמיים אדומים במרחק כ-${d} ק״מ לכיוון ה${state.mode==='sunset'?'שקיעה':'זריחה'}` : 'סיכוי לשמיים אדומים מעל הנקודה') : '';
+    const tip=[m.vpName, note].filter(Boolean).join(' · ');
+    if(tip){ if(m.getTooltip()) m.setTooltipContent(tip); else m.bindTooltip(tip,{direction:'top', offset:[0,-6]}); }
+    else if(m.getTooltip()) m.unbindTooltip();
+  });
+}
+map.on('zoomend', renderVP); map.on('moveend', colorVP); renderVP();
 
 /* ---------- selected point ---------- */
 function verdict(s){ return s>=0.75?['מרהיב','var(--good)']:s>=0.55?['טוב','var(--good)']:s>=0.3?['בינוני','var(--mid)']:['נמוך','var(--low)']; }

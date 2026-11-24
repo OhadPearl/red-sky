@@ -1,7 +1,7 @@
 // Service worker: keeps the app itself available and fast. Forecasts and map tiles always come from the network.
-const VERSION = 'redsky-v9';
+const VERSION = 'redsky-v11';
 const SHELL = [
-  './', './index.html', './manifest.webmanifest',
+  './', './index.html', './manifest.webmanifest', './viewpoints.json',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
