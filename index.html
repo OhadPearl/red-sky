@@ -48,7 +48,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .top{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:0;right:0;z-index:1200;display:flex;flex-direction:column;align-items:center;padding:0 16px;pointer-events:none}
 .search{pointer-events:auto;width:100%;max-width:420px;display:flex;align-items:center;gap:8px;padding:0 6px 0 14px;height:44px;border-radius:999px;box-sizing:border-box}
 .search>svg{width:18px;height:18px;flex:none;color:var(--muted)}
-.search input{flex:1;min-width:0;height:100%;font:500 15px var(--f-body);color:var(--fg);background:transparent;border:0;text-overflow:ellipsis}
+.search input{flex:1;min-width:0;height:100%;font:500 16px var(--f-body);color:var(--fg);background:transparent;border:0;text-overflow:ellipsis}
 .search input:focus{outline:none}
 .search input::-webkit-search-cancel-button,.search input::-webkit-search-decoration{-webkit-appearance:none;appearance:none}
 .search input::placeholder{color:var(--muted);font-weight:400}
@@ -129,7 +129,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .star{display:flex;align-items:center;gap:6px;padding:6px 11px;border-radius:999px;font-size:13.5px;font-weight:500;background:var(--line);flex:none}
 .star svg{width:16px;height:16px}
 .star[aria-pressed="true"]{background:#ffb54733;color:#b86a00}
-.favrow input{flex:1;min-width:0;font:inherit;font-size:14px;color:var(--fg);background:transparent;border:0;border-bottom:1px dashed var(--line);padding:4px 2px}
+.favrow input{flex:1;min-width:0;font:inherit;font-size:16px;color:var(--fg);background:transparent;border:0;border-bottom:1px dashed var(--line);padding:4px 2px}
 .favrow input:focus{outline:none;border-bottom-color:var(--accent)}
 .fav{display:grid;grid-template-columns:1fr auto;align-items:center;gap:4px 8px;padding:10px 2px;border-bottom:1px solid var(--line)}
 .fav:last-child{border-bottom:0}
@@ -156,7 +156,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .sheet .box.sharebox{width:100%;max-width:400px;position:relative;padding:14px 14px 16px;max-height:calc(100dvh - 32px);overflow:auto}
 #shareCv{display:block;width:100%;height:auto;max-height:58dvh;object-fit:contain;border-radius:14px;background:#1b1d2b}
 .shareplace{display:flex;align-items:center;gap:8px;margin:12px 2px 4px;font-size:13px;color:var(--muted)}
-.shareplace input{flex:1;min-width:0;font:inherit;font-size:15px;color:var(--fg);background:transparent;border:0;border-bottom:1px dashed var(--line);padding:5px 2px}
+.shareplace input{flex:1;min-width:0;font:inherit;font-size:16px;color:var(--fg);background:transparent;border:0;border-bottom:1px dashed var(--line);padding:5px 2px}
 .shareplace input:focus{outline:none;border-bottom-color:var(--accent)}
 .sharetext{font-size:12.5px;color:var(--muted);margin:2px 2px 10px;white-space:pre-line;overflow-wrap:anywhere}
 .sharebtns{display:flex;flex-wrap:wrap;gap:8px}
@@ -257,7 +257,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     <p>לכל נקודה במפה נבדקים שני דברים: האם יש מעליה עננים בינוניים או גבוהים (מ-3 ק״מ ומעלה, כולל ענני נוצה בגובה 8 ק״מ) שיכולים להיצבע, והאם הדרך של קרני השמש אליהם, לאורך מאות קילומטרים לכיוון השמש, פנויה מעננים שיחסמו את האור. כשבוחרים נקודה, התחזית לאורך כיוון השמש שלה נשלפת בצפיפות גבוהה יותר, כדי לדייק את הסיכוי. עננים נמוכים מעל הנקודה מורידים את הסיכוי, כי הם מסתירים את השמיים.</p>
     <p>הקישו על המפה כדי לבחור נקודה, ופתחו את כפתור הנקודה בצד כדי לראות את הנתונים שלה.</p>
     <p>ציר הזמן למטה נצבע לפי הסיכוי בנקודה שבחרתם, כך שרואים מיד באיזו זריחה או שקיעה כדאי לצאת. מקומות ששומרים בכוכב נבדקים בכל פתיחה של האפליקציה, וכשיש סיכוי טוב באחד מהם תופיע הודעה.</p>
-    <p class="small">תחזית עננים: Open-Meteo. גובה פני השטח: Terrain Tiles (AWS). שמות מקומות: OpenStreetMap (Nominatim, Overpass). זו הערכה מבוססת תחזית, לא הבטחה.</p>
+    <p class="small">תחזית עננים: Open-Meteo. גובה פני השטח: Terrain Tiles (AWS). שמות מקומות: OpenStreetMap (Nominatim, Overpass, Photon). זו הערכה מבוססת תחזית, לא הבטחה.</p>
     <button class="ok" id="sheetOk">הבנתי</button>
   </div>
 </div>
@@ -478,28 +478,53 @@ function showPlaceName(){
 }
 const hideResults=()=>{ $('results').hidden=true; $('results').innerHTML=''; };
 $('searchIn').addEventListener('focus', e=>{ e.target.select(); $('searchClr').hidden=false; });
-$('searchIn').addEventListener('blur', ()=>setTimeout(()=>{ if(document.activeElement!==$('searchIn') && !$('results').matches(':hover')){ hideResults(); showPlaceName(); } }, 200));
+// Suggestions as you type come from Photon (OpenStreetMap search built for this; fair use, no key).
+let picking=false, sugT=null, sugCtl=null;
+$('results').addEventListener('pointerdown', ()=>{ picking=true; });
+$('searchIn').addEventListener('blur', ()=>setTimeout(()=>{
+  if(picking || document.activeElement===$('searchIn')) return;
+  hideResults(); showPlaceName(); window.scrollTo(0,0);
+}, 250));
 $('searchClr').onclick=()=>{ hideResults(); $('searchIn').value=''; if(document.activeElement!==$('searchIn')) clearPoint(); $('searchIn').focus(); };
-$('searchForm').addEventListener('submit', async e=>{
-  e.preventDefault(); const q=$('searchIn').value.trim(); if(q.length<2) return;
-  const id=searchQ={}; $('topSpin').hidden=false;
+function photonLabel(pr){
+  const title = pr.name || [pr.street, pr.housenumber].filter(Boolean).join(' ') || '';
+  const sub=[]; for(const v of [pr.name && pr.street ? pr.street : null, pr.city, pr.county, pr.state, pr.country]) if(v && v!==title && !sub.includes(v)) sub.push(v);
+  return {title, sub:sub.join(', ')};
+}
+async function suggest(q, all){
+  if(sugCtl) sugCtl.abort(); const ctl=sugCtl=new AbortController();
   try{
-    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&accept-language=he&q=${encodeURIComponent(q)}`);
-    if(id!==searchQ) return; if(!r.ok) throw new Error(r.status);
-    const list=await r.json(), box=$('results'); box.innerHTML='';
-    if(!list.length){ box.innerHTML='<div class="none">לא נמצאו תוצאות</div>'; }
-    for(const it of list){
-      const parts=it.display_name.split(', '), btn=document.createElement('button'); btn.type='button';
-      const t=document.createElement('span'); t.textContent=it.name||parts[0];
-      const sm=document.createElement('small'); sm.textContent=parts.slice(1).join(', ');
-      btn.append(t, sm);
-      btn.onclick=()=>{ hideResults(); const ll=L.latLng(+it.lat,+it.lon); ll._place=it.name||parts[0];
-        map.setView(ll, Math.max(map.getZoom(), it.type==='city'?11:13)); $('searchIn').blur(); selectPoint(ll); if($('pointPanel').hidden) openPanel('point'); };
+    const c=map.getCenter();
+    const r=await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lang=default&limit=6&lat=${c.lat.toFixed(3)}&lon=${c.lng.toFixed(3)}`, {signal:ctl.signal});
+    if(!r.ok) throw new Error(r.status);
+    const feats=(await r.json()).features||[], box=$('results'); box.innerHTML='';
+    if(ctl!==sugCtl || document.activeElement!==$('searchIn')) return;
+    if(!feats.length){ if(all) box.innerHTML='<div class="none">לא נמצאו תוצאות</div>'; else { hideResults(); return; } }
+    for(const f of feats){
+      const {title, sub}=photonLabel(f.properties||{}); if(!title) continue;
+      const btn=document.createElement('button'); btn.type='button';
+      const t=document.createElement('span'); t.textContent=title;
+      const sm=document.createElement('small'); sm.textContent=sub; btn.append(t, sm);
+      btn.onclick=()=>{
+        picking=false; hideResults();
+        const [lon,lat]=f.geometry.coordinates, ll=L.latLng(lat,lon); ll._place=title;
+        const big=['city','town','country','state','county','region'].includes(f.properties.osm_value) || f.properties.type==='city';
+        $('searchIn').blur(); window.scrollTo(0,0);
+        map.setView(ll, Math.max(map.getZoom(), big?11:13)); selectPoint(ll);
+      };
       box.append(btn);
     }
     box.hidden=false;
-  }catch(err){ toast('החיפוש לא הצליח'); }
-  finally{ if(id===searchQ) $('topSpin').hidden=true; }
+  }catch(err){ if(err.name!=='AbortError' && all) toast('החיפוש לא הצליח'); }
+  finally{ picking=false; }
+}
+$('searchIn').addEventListener('input', e=>{
+  const q=e.target.value.trim(); clearTimeout(sugT);
+  if(q.length<2){ if(sugCtl) sugCtl.abort(); hideResults(); return; }
+  sugT=setTimeout(()=>suggest(q), 250);
+});
+$('searchForm').addEventListener('submit', e=>{
+  e.preventDefault(); clearTimeout(sugT); const q=$('searchIn').value.trim(); if(q.length>=2) suggest(q, true);
 });
 let toastTimer;
 function toast(msg, retry, ms=3500){
@@ -1069,8 +1094,19 @@ function shareMessage(){
   const {r, ev}=shareInfo(), p=share.p;
   const head=`${dayName(share.day)} ${modeName(share.mode)}${share.place?' מ'+share.place:''}`;
   const chance = r ? `סיכוי ${verdict(r.s)[0]} לשמיים אדומים (${Math.round(r.s*100)}%)` : '';
-  const when = ev ? `${modeName(share.mode)} ב-${fmtTime(ev.time)}` : '';
+  const g = r && r.s>=0.1 ? glowTime(p, share.day, share.mode, r) : null;
+  const when = ev ? `${modeName(share.mode)} ב-${fmtTime(ev.time)}${g?`, העננים צפויים להאדים בסביבות ${fmtTime(g)}`:''}` : '';
   return [head, [chance, when].filter(Boolean).join(', '), `ניווט: ${navLink(p)}`, `התחזית: ${appLink(p)}`].join('\n');
+}
+// When the clouds should glow: a cloud at height h stays lit until the sun is sqrt(2h/R) below the horizon;
+// the colour is deepest near the end of that window (about 10–15 min after sunset). Uses the layer that drives the score (high clouds glow longer).
+function glowTime(p, day, mode, r){
+  const ev=eventFor(p.lat,p.lng,day,mode); if(!ev || !r) return null;
+  const h = r.high>r.mid ? HIGH_H : 5, dep=Math.sqrt(2*h/R_EFF)/D2R+0.8, dir=mode==='sunset'?1:-1;
+  const alt = t => SunCalc.getPosition(new Date(t), p.lat, p.lng).altitude/D2R;
+  let t=ev.time.getTime();
+  for(let i=0;i<90 && alt(t)>-dep;i++) t+=dir*60000; // step a minute at a time until the sun is deep enough
+  return new Date(t);
 }
 const CARD_C = s => s>=0.55?'#ff5a40':s>=0.3?'#ff9a52':'#aab1c2';
 function wrapLines(ctx, text, maxW, max=2){
@@ -1113,8 +1149,9 @@ async function drawCard(){
   c.font='700 230px Rubik'; c.fillText(r?Math.round(s*100)+'%':'–', R, y+200);
   c.font='500 48px Heebo'; c.fillText(r?`סיכוי ${verdict(s)[0]} לשמיים אדומים`:'אין עדיין תחזית', R, y+272);
   // facts on the dark ground
+  const glowT=r && r.s>=0.1 ? glowTime(share.p, share.day, share.mode, r) : null;
   const facts=[[ev?fmtTime(ev.time):'–', `שעת ה${modeName(share.mode)}`],
-    [ev?compass(ev.az):'–', 'כיוון השמש'],
+    [glowT?fmtTime(glowT):'–', 'העננים מאדימים'],
     [r?Math.round(r.low*100)+'%':'–', 'עננים נמוכים'],
     [r?Math.round(Math.max(r.mid,r.high)*100)+'%':'–', 'עננים גבוהים']];
   const cw=(W-2*P)/facts.length; c.textAlign='center';
