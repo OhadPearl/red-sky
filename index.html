@@ -166,6 +166,8 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .sheet .ok{margin-top:6px;padding:9px 18px;border-radius:999px;background:var(--sel);color:var(--sel-fg);font-weight:500}
 
 .toast{position:fixed;top:calc(env(safe-area-inset-top,0px) + 66px);left:50%;transform:translateX(-50%);z-index:1500;padding:8px 14px;border-radius:12px;font-size:16px;max-width:calc(100% - 32px)}
+/* small, out-of-the-way note while the detailed forecast is still coming in */
+.finer{position:fixed;left:max(12px,env(safe-area-inset-left,0px));bottom:calc(var(--tl-b) + var(--tl-h) + 12px);z-index:1050;display:flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;font-size:13px;color:var(--muted);pointer-events:none}
 .toast button{color:var(--accent);font-weight:700;margin-inline-start:8px}
 
 .leaflet-control-attribution{font-size:10px;background:var(--panel)!important;color:var(--muted)}
@@ -279,6 +281,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   </div>
 </div>
 <div class="toast glass" id="toast" hidden></div>
+<div class="finer glass" id="finer" hidden><span class="spin"></span>טוען מידע מדויק יותר</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/suncalc@1.9.0/suncalc.js"></script>
@@ -589,7 +592,10 @@ async function fetchChunk(pts){
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 const sent = store.get('sent', []).filter(([t])=>Date.now()-t<3600e3); // [time, locations] — survives reopening
 const used = ms => sent.reduce((a,[t,n])=>Date.now()-t<ms?a+n:a, 0);
-const inflight = new Map(); let chain = Promise.resolve(), waitNote = 0;
+const inflight = new Map(); let chain = Promise.resolve();
+// the "loading more detail" pill: on while any reason holds it
+const finerWhy = new Set();
+function finer(why, on){ on ? finerWhy.add(why) : finerWhy.delete(why); $('finer').hidden = !finerWhy.size; }
 function ensure(pts, alive=()=>true){
   const waits=new Set(), todo=[];
   for(const p of pts){ if(fresh(p[2])) continue; const j=inflight.get(p[2]); if(j){ j.alive.push(alive); waits.add(j.pr); } else todo.push(p); }
@@ -608,8 +614,9 @@ async function runJob(job){
     const pts=job.pts.filter(p=>!fresh(p[2])); if(!pts.length) return;
     if(used(3600e3)+pts.length>BUDGET_HOUR) throw Object.assign(new Error('hour'),{rate:true,hour:true});
     if(used(60e3)+pts.length>BUDGET_MIN){              // wait for the oldest requests to leave the 1-minute window
-      if(Date.now()-waitNote>20e3){ waitNote=Date.now(); toast('הרבה בקשות בדקה האחרונה. משלים את התחזית בעוד כמה שניות…'); }
-      await sleep(2000); tries--; continue;
+      finer('budget', true);
+      try{ await sleep(2000); } finally{ finer('budget', false); }
+      tries--; continue;
     }
     sent.push([Date.now(), pts.length]); store.set('sent', sent.filter(([t])=>Date.now()-t<3600e3));
     try{ return await fetchChunk(pts); }
@@ -621,7 +628,12 @@ function at(rec, layer, hourF){
   return a[i]+(a[i+1]-a[i])*(x-i);
 }
 // grids: spacing from NEST (powers of two) so coarse points are always also fine points
-const NEST = [0.125, 0.25, 0.5, 1, 2, 4], NEAR_MAX = 400, FAR_MAX = 200;
+const NEST = [0.125, 0.25, 0.5, 1, 2, 4], NEAR_MAX = 620, FAR_MAX = 200;
+// Israel and its edges: here the near grid is always kept at full detail (0.125°, ≈ the forecast model's own
+// spacing), whatever the zoom. Red patches are often only 20–50 km wide and vanish on a coarser grid, so a
+// zoomed-out map used to look far calmer than the same place zoomed in. The whole region is ~600 points,
+// fetched once per 2 h and shared by every zoom, sunrise and sunset.
+const REGION = [29.4, 34.2, 33.45, 36.0];
 function lattice(box, step){
   const [s,w,n,e]=box, lat0=Math.floor(s/step)*step, lon0=Math.floor(w/step)*step;
   const nLat=Math.floor(n/step)-Math.floor(s/step)+2, nLon=Math.floor(e/step)-Math.floor(w/step)+2, keys=[];
@@ -638,12 +650,15 @@ function fill(g, hourF, fallback){ // values at the event time; points not loade
 }
 async function load(){
   const id = ++state.reqId, alive = () => id===state.reqId; updateTimeline();
+  finer('load', false);
   const c = map.getCenter(), ev = eventFor(c.lat, c.lng);
   if(!ev){ setStatus('אין שקיעה או זריחה ביום הזה כאן'); return; }
   const hourF = ev.time.getTime()/3600000;
   // near grid: the screen, fine. far grid: screen + the stretch toward the sun the light crosses, coarse (≥1°)
   const b = map.getBounds().pad(0.08), clamp = v => Math.max(-85, Math.min(85, v));
-  const near=[clamp(b.getSouth()), b.getWest(), clamp(b.getNorth()), b.getEast()];
+  const view=[clamp(b.getSouth()), b.getWest(), clamp(b.getNorth()), b.getEast()];
+  const cut=[Math.max(view[0],REGION[0]), Math.max(view[1],REGION[1]), Math.min(view[2],REGION[2]), Math.min(view[3],REGION[3])];
+  const near = cut[0]<cut[2] && cut[1]<cut[3] ? cut : view;   // over Israel: just the part of the screen inside the region
   const corners=[[near[0],near[1]],[near[0],near[3]],[near[2],near[1]],[near[2],near[3]]], all=corners.concat(corners.map(([la,lo])=>offset(la,lo,ev.az,PATH_KM*0.85)), corners.map(([la,lo])=>offset(la,lo,ev.az+180,150)));
   const far=[clamp(Math.min(...all.map(p=>p[0]))), Math.min(...all.map(p=>p[1])), clamp(Math.max(...all.map(p=>p[0]))), Math.max(...all.map(p=>p[1]))];
   const N = lattice(near, stepFor(near, NEAR_MAX)), G = lattice(far, stepFor(far, FAR_MAX, Math.max(1, N.step)));
@@ -653,7 +668,23 @@ async function load(){
     if(need(G).length || need(N).length) setStatus('', true);
     await ensure(need(G), alive); if(!alive()) return;
     fill(G, hourF);
-    if(need(N).length){ show(fill(N, hourF, G), G); await ensure(need(N), alive); if(!alive()) return; } // coarse preview first
+    // Stage 1: the finest grid whose missing points fit in what's left of this minute's budget, so a first map
+    // arrives without waiting. Stage 2: the full-detail grid fills in behind it (it can take up to a minute).
+    let base = G;
+    if(need(N).length){
+      const room = Math.max(40, BUDGET_MIN - used(60e3));
+      const st = NEST.find(x=>x>=N.step && lattice(near,x).keys.filter(k=>!fresh(k)).length<=room) || G.step;
+      if(st>N.step && st<G.step){
+        const M = lattice(near, st);
+        show(fill(M, hourF, G), G);
+        await ensure(need(M), alive); if(!alive()) return;
+        base = fill(M, hourF, G); show(base, G);
+      } else show(fill(N, hourF, G), G);
+      finer('load', true);
+      const tick=setInterval(()=>{ if(alive()) show(fill(N, hourF, base), G); }, 2500);
+      try{ await ensure(need(N), alive); } finally{ clearInterval(tick); if(alive()) finer('load', false); }
+      if(!alive()) return;
+    }
     show(fill(N, hourF, G), G); setStatus('');
   }catch(err){
     console.error('forecast load failed', err);
@@ -721,7 +752,7 @@ function scoreGrids(near, far, az){
   }
 }
 function redScore(lat, lon){
-  return {s:sample('s',lat,lon), low:sample('low',lat,lon), mid:sample('mid',lat,lon), high:sample('high',lat,lon)};
+  return {s:sampleAny('s',lat,lon), low:sampleAny('low',lat,lon), mid:sampleAny('mid',lat,lon), high:sampleAny('high',lat,lon)};
 }
 
 /* ---------- point refinement: dense forecast along the chosen point's sunrise and sunset directions ----------
