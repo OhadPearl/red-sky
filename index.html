@@ -249,7 +249,7 @@ button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
       <li>הקישו על זריחה או שקיעה בציר הזמן כדי לראות אותה על המפה. המפה נצבעת באדום במקומות שבהם יש סיכוי, והקו המקווקו מהנקודה מראה את כיוון השמש.</li>
       <li>השכבה הכחולה סביב הנקודה היא שדה הראייה: היא מסמנת את השטח שרואים מהנקודה עד האופק, לפי גובה פני השטח. כך אפשר לבדוק שאין הר או רכס שחוסם את הנוף לכיוון השמש.</li>
       <li>כפתור הנקודה בצד פותח את הנתונים שלה: הסיכוי, העננים, והאם האופק לכיוון השמש פתוח.</li>
-      <li>הנקודות הירוקות הן נקודות תצפית מוכרות. נקודה כתומה או אדומה מסמנת שאפשר לראות ממנה שמיים אדומים באותה זריחה או שקיעה, מעליה או במרחק לכיוון השמש: אדום כשהם חזקים וקרובים, כתום כשהם חלשים יותר או רחוקים. הקשה על נקודה בוחרת אותה.</li>
+      <li>הנקודות הירוקות הן נקודות תצפית מוכרות. נקודה כתומה או אדומה מסמנת שאפשר לראות ממנה שמיים אדומים באותה זריחה או שקיעה, מעליה או במרחק לכיוון השמש: אדום כשהם חזקים וקרובים, כתום כשהם חלשים יותר או רחוקים. נקודה סגולה צופה אל עננים אדומים בצד שמול השמש, שהשמש מאירה מלפנים. הקשה על נקודה בוחרת אותה.</li>
       <li>הכוכב שומר את המקום. מקומות שמורים נבדקים בכל פתיחה, וכשיש סיכוי טוב מופיעה הודעה.</li>
       <li>כפתור השיתוף יוצר תמונה של התחזית עם קישור ניווט למקום.</li>
     </ol>
@@ -644,7 +644,7 @@ async function load(){
   // near grid: the screen, fine. far grid: screen + the stretch toward the sun the light crosses, coarse (≥1°)
   const b = map.getBounds().pad(0.08), clamp = v => Math.max(-85, Math.min(85, v));
   const near=[clamp(b.getSouth()), b.getWest(), clamp(b.getNorth()), b.getEast()];
-  const corners=[[near[0],near[1]],[near[0],near[3]],[near[2],near[1]],[near[2],near[3]]], all=corners.concat(corners.map(([la,lo])=>offset(la,lo,ev.az,PATH_KM*0.85)));
+  const corners=[[near[0],near[1]],[near[0],near[3]],[near[2],near[1]],[near[2],near[3]]], all=corners.concat(corners.map(([la,lo])=>offset(la,lo,ev.az,PATH_KM*0.85)), corners.map(([la,lo])=>offset(la,lo,ev.az+180,150)));
   const far=[clamp(Math.min(...all.map(p=>p[0]))), Math.min(...all.map(p=>p[1])), clamp(Math.max(...all.map(p=>p[0]))), Math.max(...all.map(p=>p[1]))];
   const N = lattice(near, stepFor(near, NEAR_MAX)), G = lattice(far, stepFor(far, FAR_MAX, Math.max(1, N.step)));
   const need = g => g.keys.filter(k=>!fresh(k)).map(keyPt);
@@ -938,23 +938,34 @@ function scoreAny(lat, lon){
   const F=state.F, dLat=Math.cos(F.az*D2R)/111.32, dLon=Math.sin(F.az*D2R)/(111.32*Math.cos(lat*D2R));
   return scoreFrom(sampleAny('low',lat,lon), sampleAny('mid',lat,lon), sampleAny('high',lat,lon), (layer,x)=>sampleAny(layer, lat+x*dLat, lon+x*dLon));
 }
+// Directions a viewpoint looks for red sky: toward the sun, and away from it, where clouds are lit from the front
+// (e.g. the Dead Sea shore looking east at sunset). Front-lit clouds glow less and only nearby ones impress,
+// so that side counts 0.7, only up to 50 km, and marks a viewpoint (purple) only from 40%.
+const VP_SIDES=[{off:0,f:1,max:Infinity},{off:180,f:0.7,max:50}], VP_ANTI_MIN=0.4;
+const HE_DIR=['צפון','צפון-מזרח','מזרח','דרום-מזרח','דרום','דרום-מערב','מערב','צפון-מערב'];
+const heDir=az=>HE_DIR[Math.round((((az%360)+360)%360)/45)%8];
 function vpSeen(m){
-  const ll=m.getLatLng(), F=state.F; let best={v:0,d:0};
-  const facing = !m.vpDir || angIn(F.az, m.vpDir);   // a viewpoint tagged as facing elsewhere only counts what's overhead
-  for(const x of facing?VP_X:[0]){
-    const [la,lo]=x?offset(ll.lat,ll.lng,F.az,x):[ll.lat,ll.lng], s=(x?scoreAny(la,lo):redScore(la,lo)).s*vpWeight(x);
-    if(s>best.v) best={v:s,d:x};
+  const ll=m.getLatLng(), F=state.F; let sun={v:redScore(ll.lat,ll.lng).s, d:0, az:null}, anti={v:0, d:0, az:null};
+  for(const {off,f,max} of VP_SIDES){
+    const az=F.az+off;
+    if(m.vpDir && !angIn(((az%360)+360)%360, m.vpDir)) continue;   // a viewpoint tagged as facing elsewhere doesn't see this side
+    for(const x of VP_X){ if(!x) continue; if(x>max) break;
+      const [la,lo]=offset(ll.lat,ll.lng,az,x);
+      if(!inGrid(F.near,la,lo) && !inGrid(F.far,la,lo)) break;    // no forecast out there
+      const s=scoreAny(la,lo).s*vpWeight(x)*f;
+      if(off){ if(s>anti.v) anti={v:s,d:x,az}; } else if(s>sun.v) sun={v:s,d:x,az:null};
+    }
   }
-  return best;
+  return anti.v>=VP_ANTI_MIN && anti.v>sun.v ? anti : sun;
 }
 function colorVP(){
   if(!vpNamed) return;
   const b=map.getBounds().pad(0.2), r=vpRadius();
   for(const g of [vpNamed,vpRest]) if(map.hasLayer(g)) g.eachLayer(m=>{
     if(!b.contains(m.getLatLng())) return;
-    const {v,d}=state.F ? vpSeen(m) : {v:0,d:0};
-    m.setStyle({fillColor: v>=0.55?'#e5322d':v>=0.3?'#f08a3c':'#2e8b57', radius: v>=0.55?r+1.5:r});
-    const note = v>=0.3 ? (d ? `שמיים אדומים במרחק כ-${d} ק״מ לכיוון ה${state.mode==='sunset'?'שקיעה':'זריחה'}` : 'סיכוי לשמיים אדומים מעל הנקודה') : '';
+    const {v,d,az}=state.F ? vpSeen(m) : {v:0,d:0,az:null};
+    m.setStyle({fillColor: v<0.3?'#2e8b57':az!=null?'#8e44c9':v>=0.55?'#e5322d':'#f08a3c', radius: v>=0.55?r+1.5:r});   // purple: front-lit clouds on the side away from the sun
+    const note = v>=0.3 ? (d ? `שמיים אדומים במרחק כ-${d} ק״מ ${az==null?`לכיוון ה${state.mode==='sunset'?'שקיעה':'זריחה'}`:`לכיוון ${heDir(az)}`}` : 'סיכוי לשמיים אדומים מעל הנקודה') : '';
     const tip=[m.vpName, note].filter(Boolean).join(' · ');
     if(tip){ if(m.getTooltip()) m.setTooltipContent(tip); else m.bindTooltip(tip,{direction:'top', offset:[0,-6]}); }
     else if(m.getTooltip()) m.unbindTooltip();
