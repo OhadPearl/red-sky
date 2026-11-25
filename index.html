@@ -621,7 +621,7 @@ function at(rec, layer, hourF){
   return a[i]+(a[i+1]-a[i])*(x-i);
 }
 // grids: spacing from NEST (powers of two) so coarse points are always also fine points
-const NEST = [0.125, 0.25, 0.5, 1, 2, 4], NEAR_MAX = 150, FAR_MAX = 120;
+const NEST = [0.125, 0.25, 0.5, 1, 2, 4], NEAR_MAX = 400, FAR_MAX = 200;
 function lattice(box, step){
   const [s,w,n,e]=box, lat0=Math.floor(s/step)*step, lon0=Math.floor(w/step)*step;
   const nLat=Math.floor(n/step)-Math.floor(s/step)+2, nLon=Math.floor(e/step)-Math.floor(w/step)+2, keys=[];
@@ -648,7 +648,7 @@ async function load(){
   const far=[clamp(Math.min(...all.map(p=>p[0]))), Math.min(...all.map(p=>p[1])), clamp(Math.max(...all.map(p=>p[0]))), Math.max(...all.map(p=>p[1]))];
   const N = lattice(near, stepFor(near, NEAR_MAX)), G = lattice(far, stepFor(far, FAR_MAX, Math.max(1, N.step)));
   const need = g => g.keys.filter(k=>!fresh(k)).map(keyPt);
-  const show = (nearG, farG) => { state.F={near:nearG, far:farG, az:ev.az, time:ev.time}; render(); updatePoint(); };
+  const show = (nearG, farG) => { scoreGrids(nearG, farG, ev.az); state.F={near:nearG, far:farG, az:ev.az, time:ev.time}; render(); updatePoint(); };
   try{
     if(need(G).length || need(N).length) setStatus('', true);
     await ensure(need(G), alive); if(!alive()) return;
@@ -709,9 +709,19 @@ function scoreFrom(low, mid, high, cloudAt){
   const sHigh = high>0.05 ? deck(high)*pathLight(HIGH_H,cloudAt)*0.9 : 0;
   return {s:Math.pow((1-(1-sMid)*(1-sHigh))*(1-0.85*low), PICKY), low, mid, high};
 }
+// The chance is computed at the forecast grid points themselves and then interpolated between them.
+// Interpolating the clouds first and scoring after made the map depend on the zoom: a coarse grid averages
+// overcast and clear patches into "partly cloudy", which scores higher than either. The light path toward
+// the sun always reads the far grid (≥1°), so it's the same at every zoom too.
+function scoreGrids(near, far, az){
+  for(const g of [far, near]){
+    g.s=new Float32Array(g.keys.length);
+    g.keys.forEach((k,i)=>{ const [lat,lon]=k.split(',').map(Number), dLat=Math.cos(az*D2R)/111.32, dLon=Math.sin(az*D2R)/(111.32*Math.cos(lat*D2R));
+      g.s[i]=scoreFrom(g.low[i], g.mid[i], g.high[i], (layer,x)=>sampleGrid(far, layer, lat+x*dLat, lon+x*dLon)).s; });
+  }
+}
 function redScore(lat, lon){
-  const F=state.F, dLat=Math.cos(F.az*D2R)/111.32, dLon=Math.sin(F.az*D2R)/(111.32*Math.cos(lat*D2R));
-  return scoreFrom(sample('low',lat,lon), sample('mid',lat,lon), sample('high',lat,lon), (layer,x)=>sampleAny(layer, lat+x*dLat, lon+x*dLon));
+  return {s:sample('s',lat,lon), low:sample('low',lat,lon), mid:sample('mid',lat,lon), high:sample('high',lat,lon)};
 }
 
 /* ---------- point refinement: dense forecast along the chosen point's sunrise and sunset directions ----------
@@ -934,10 +944,7 @@ const angIn=(az,[a,b])=>{ const w=((b-a)%360+360)%360||360, x=((az-a)%360+360)%3
 // (distant clouds sit low over the horizon). Red = strong and near, orange = weaker or further away.
 const VP_X=[0,10,20,35,50,70,100,140];
 const vpWeight=d=>d<=15?1:Math.max(0.25,1-(d-15)/120*0.75);
-function scoreAny(lat, lon){
-  const F=state.F, dLat=Math.cos(F.az*D2R)/111.32, dLon=Math.sin(F.az*D2R)/(111.32*Math.cos(lat*D2R));
-  return scoreFrom(sampleAny('low',lat,lon), sampleAny('mid',lat,lon), sampleAny('high',lat,lon), (layer,x)=>sampleAny(layer, lat+x*dLat, lon+x*dLon));
-}
+function scoreAny(lat, lon){ return {s:sampleAny('s',lat,lon)}; }
 // Directions a viewpoint looks for red sky: toward the sun, and away from it, where clouds are lit from the front
 // (e.g. the Dead Sea shore looking east at sunset). Front-lit clouds glow less and only nearby ones impress,
 // so that side counts 0.7, only up to 50 km, and marks a viewpoint (purple) only from 40%.
